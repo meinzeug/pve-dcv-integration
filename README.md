@@ -115,6 +115,7 @@ Artifacts are written to `dist/`:
 
 - browser extension zip
 - thin-client assistant tarball
+- USB payload tarball with prebuilt live installer assets
 - USB installer shell script
 - thin-client assistant `latest` tarball for the standalone USB writer bootstrap path
 - `SHA256SUMS`
@@ -168,6 +169,8 @@ Write a bootable installer stick as a normal user:
 ```bash
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh
 ```
+
+The standalone `latest` USB writer now downloads a prebuilt USB payload bundle from the GitHub release, unmounts the selected target automatically and no longer depends on a successful local `live-build` run on the workstation.
 
 List candidate disks before writing:
 

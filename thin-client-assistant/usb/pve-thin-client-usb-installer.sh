@@ -9,7 +9,7 @@ USB_LABEL="${USB_LABEL:-PVETHIN}"
 TARGET_DEVICE="${TARGET_DEVICE:-}"
 ASSUME_YES="0"
 LIST_DEVICES="0"
-RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz}"
+RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-payload-latest.tar.gz}"
 BOOTSTRAP_DIR=""
 
 usage() {
@@ -45,6 +45,7 @@ rerun_as_root() {
   exec sudo \
     USB_LABEL="$USB_LABEL" \
     RELEASE_PAYLOAD_URL="$RELEASE_PAYLOAD_URL" \
+    PVE_DCV_BOOTSTRAP_BASE="${PVE_DCV_BOOTSTRAP_BASE:-}" \
     "$0" "${sudo_args[@]}"
 }
 
@@ -56,6 +57,27 @@ require_tool() {
   fi
 }
 
+allocate_bootstrap_dir() {
+  local bases=()
+  local base=""
+  local candidate=""
+
+  [[ -n "${PVE_DCV_BOOTSTRAP_BASE:-}" ]] && bases+=("${PVE_DCV_BOOTSTRAP_BASE}")
+  [[ -n "${TMPDIR:-}" ]] && bases+=("${TMPDIR}")
+  bases+=("/var/tmp" "/tmp")
+
+  for base in "${bases[@]}"; do
+    [[ -d "$base" && -w "$base" ]] || continue
+    candidate="$(mktemp -d "$base/pve-dcv-usb.XXXXXX" 2>/dev/null || true)"
+    if [[ -n "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  mktemp -d
+}
+
 bootstrap_repo_root() {
   local tarball extracted
   if [[ -d "$REPO_ROOT/thin-client-assistant" && -x "$REPO_ROOT/scripts/build-thin-client-installer.sh" ]]; then
@@ -65,10 +87,11 @@ bootstrap_repo_root() {
   require_tool curl
   require_tool tar
 
-  BOOTSTRAP_DIR="$(mktemp -d)"
+  BOOTSTRAP_DIR="$(allocate_bootstrap_dir)"
   tarball="$BOOTSTRAP_DIR/payload.tar.gz"
   extracted="$BOOTSTRAP_DIR/extracted"
   mkdir -p "$extracted"
+  chmod 0755 "$BOOTSTRAP_DIR" "$extracted"
 
   echo "Downloading thin-client payload bundle from GitHub release..."
   curl -fsSL "$RELEASE_PAYLOAD_URL" -o "$tarball"
@@ -247,6 +270,23 @@ confirm_device() {
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
+release_target_device() {
+  local mountpoint=""
+  local part=""
+  local parts=()
+
+  mapfile -t parts < <(lsblk -nrpo NAME "$TARGET_DEVICE" | tail -n +2)
+  for part in "${parts[@]}"; do
+    while IFS= read -r mountpoint; do
+      [[ -n "$mountpoint" ]] || continue
+      umount "$mountpoint"
+    done < <(findmnt -rn -S "$part" -o TARGET 2>/dev/null || true)
+  done
+
+  partprobe "$TARGET_DEVICE" || true
+  udevadm settle || true
+}
+
 ensure_live_assets() {
   if [[ -f "$ASSET_DIR/filesystem.squashfs" && -f "$ASSET_DIR/vmlinuz" && -f "$ASSET_DIR/initrd.img" ]]; then
     return 0
@@ -285,6 +325,7 @@ write_usb() {
   mount_dir="$(mktemp -d)"
   trap 'umount "$mount_dir" >/dev/null 2>&1 || true; rmdir "$mount_dir" >/dev/null 2>&1 || true' RETURN
 
+  release_target_device
   wipefs -a "$TARGET_DEVICE"
   parted -s "$TARGET_DEVICE" mklabel gpt
   parted -s "$TARGET_DEVICE" mkpart BIOSBOOT 1MiB 3MiB

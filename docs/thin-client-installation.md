@@ -14,6 +14,7 @@ The repository also ships a USB writer helper that prepares a removable drive wi
 The current USB flow now consists of three layers:
 
 - a local USB writer that can self-escalate to `sudo`
+- a release payload bundle with prebuilt live assets for the standalone writer path
 - a bootable live installer environment
 - a local-disk installer that copies the thin-client runtime to the target disk
 
@@ -30,7 +31,7 @@ The current USB flow now consists of three layers:
 1. Run `thin-client-assistant/usb/pve-thin-client-usb-installer.sh` on a Linux workstation
 2. Select the target USB device
    Or inspect candidates first with `--list-devices`
-3. Let the writer build or reuse the live installer assets and write the bootable USB stick
+3. Let the writer download or reuse the live installer assets and write the bootable USB stick
 4. Boot the target hardware from the USB stick
 5. Use the live setup menu to choose mode, credentials and networking
 6. Install the thin-client runtime to the target disk
@@ -104,6 +105,8 @@ Prepare a USB installer stick:
 ```bash
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --device /dev/sdX
 ```
+
+The release-distributed `pve-thin-client-usb-installer-latest.sh` prefers a prebuilt USB payload tarball and therefore avoids a local live-build dependency on the operator workstation in the normal path.
 
 List available target devices:
 

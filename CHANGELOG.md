@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.4 - 2026-03-15
+
+- Fixed the standalone USB writer bootstrap path by moving large release extraction out of space-constrained `/tmp` defaults and into a more suitable temporary location.
+- Fixed USB media rewriting on already mounted sticks by unmounting target partitions before calling `wipefs`.
+- Added a dedicated release USB payload tarball with prebuilt live installer assets so `pve-thin-client-usb-installer-latest.sh` no longer depends on a local `live-build` run in the normal path.
+- Hardened the live-build helper to populate its build tree through `sudo` consistently, preventing permission issues during debootstrap/chroot setup.
+
 ## v0.4.3 - 2026-03-15
 
 - Added DCV metadata support for `dcv-user`, `dcv-password`, `dcv-auth-token`, `dcv-session` and `dcv-auto-submit`.

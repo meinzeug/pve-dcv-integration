@@ -20,14 +20,15 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   ca-certificates
 
 sudo rm -rf "$BUILD_DIR"
-mkdir -p "$BUILD_DIR" "$DIST_DIR/live"
-rsync -a "$LB_TEMPLATE_DIR/" "$BUILD_DIR/"
+sudo install -d -m 0755 "$BUILD_DIR" "$DIST_DIR/live"
+sudo rsync -a --delete "$LB_TEMPLATE_DIR/" "$BUILD_DIR/"
 
-install -d -m 0755 "$BUILD_DIR/config/includes.chroot/usr/local/lib"
-rsync -a "$ROOT_DIR/thin-client-assistant/" "$BUILD_DIR/config/includes.chroot/usr/local/lib/pve-thin-client/"
+sudo install -d -m 0755 "$BUILD_DIR/config/includes.chroot/usr/local/lib"
+sudo rsync -a --delete "$ROOT_DIR/thin-client-assistant/" "$BUILD_DIR/config/includes.chroot/usr/local/lib/pve-thin-client/"
+sudo chmod 0755 "$BUILD_DIR"
 
 pushd "$BUILD_DIR" >/dev/null
-chmod +x auto/config
+sudo chmod +x auto/config
 THINCLIENT_ARCH="$THINCLIENT_ARCH" ./auto/config
 sudo lb clean --purge || true
 BUILD_RC=0
@@ -37,6 +38,7 @@ fi
 popd >/dev/null
 
 sudo chown -R "$(id -u):$(id -g)" "$BUILD_DIR"
+chmod -R u+rwX "$DIST_DIR"
 
 mapfile -t kernel_images < <(find "$BUILD_DIR/binary/live" -maxdepth 1 -type f -name 'vmlinuz*' | sort)
 mapfile -t initrd_images < <(find "$BUILD_DIR/binary/live" -maxdepth 1 -type f -name 'initrd.img*' | sort)
