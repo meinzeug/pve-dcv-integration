@@ -292,6 +292,7 @@ server {
 
     location ^~ ${DOWNLOADS_PATH}/ {
         alias ${ROOT_DIR}/dist/;
+        index pve-dcv-downloads-index.html;
         add_header Cache-Control "no-store";
         autoindex on;
         types {

@@ -8,6 +8,7 @@ LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
 DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
 DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
 USB_INSTALLER_URL="${PVE_DCV_USB_INSTALLER_URL:-${DOWNLOADS_BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh}"
+CONFIG_DIR="${PVE_DCV_CONFIG_DIR:-/etc/pve-dcv-integration}"
 
 ensure_root() {
   if [[ "${EUID}" -eq 0 ]]; then
@@ -22,6 +23,7 @@ ensure_root() {
       PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
       PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
       PVE_DCV_USB_INSTALLER_URL="$USB_INSTALLER_URL" \
+      PVE_DCV_CONFIG_DIR="$CONFIG_DIR" \
       "$0" "$@"
   fi
 
@@ -78,6 +80,19 @@ apt_update_with_proxmox_fallback() {
   restore_proxmox_enterprise_repo
 }
 
+write_host_env_file() {
+  install -d -m 0755 "$CONFIG_DIR"
+  cat > "$CONFIG_DIR/host.env" <<EOF
+INSTALL_DIR="$INSTALL_DIR"
+PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME"
+PVE_DCV_PROXY_LISTEN_PORT="$LISTEN_PORT"
+PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH"
+PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL"
+PVE_DCV_USB_INSTALLER_URL="$USB_INSTALLER_URL"
+PVE_DCV_CONFIG_DIR="$CONFIG_DIR"
+EOF
+}
+
 ensure_root "$@"
 ensure_dependencies
 
@@ -97,6 +112,8 @@ rsync -a --delete \
 
 "$INSTALL_DIR/scripts/package.sh"
 "$INSTALL_DIR/scripts/prepare-host-downloads.sh"
+write_host_env_file
+"$INSTALL_DIR/scripts/install-proxmox-host-services.sh"
 
 if [[ -d /usr/share/pve-manager/js ]]; then
   PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \

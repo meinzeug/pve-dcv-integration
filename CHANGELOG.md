@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.5.0 - 2026-03-15
+
+- Added production-oriented host operations tooling: a hosted-artifact refresh script, an installable systemd service/timer and a host healthcheck command.
+- Added release automation and project validation scripts so future GitHub releases can be built and published reproducibly without re-uploading the large USB payload artifact.
+- Added host-side download status metadata and a dedicated status JSON under `/pve-dcv-downloads/`.
+- Updated packaging and host deployment to include Proxmox host service templates and to install the recurring host artifact refresh timer.
+
 ## v0.4.7 - 2026-03-15
 
 - Fixed the host-side `nginx` download location so `/pve-dcv-downloads/<file>` is served as a real prefix path instead of falling through to the DCV backend.

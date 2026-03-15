@@ -26,6 +26,7 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - Can terminate DCV TLS on the Proxmox host with the existing Proxmox certificate and proxy traffic to a backend DCV VM.
 - Can inject a lightweight DCV web auto-login helper on the proxied DCV page when VM metadata provides per-VM credentials.
 - Publishes packaged thin-client artifacts on `https://<proxmox-host>:8443/pve-dcv-downloads/`.
+- Installs a recurring host refresh timer so those hosted artifacts can be rebuilt automatically.
 
 ### 2. Linux thin-client assistant
 
@@ -43,6 +44,7 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - `docs/` architecture, security and installation documentation
 - `scripts/` release packaging helpers
 - `proxmox-ui/` server-side Proxmox UI integration asset
+- `proxmox-host/` host-side service templates
 
 ## Browser extension behavior
 
@@ -73,6 +75,7 @@ For the USB workflow, the preferred operator path is now host-local:
 
 - `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh`
 - `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-payload-latest.tar.gz`
+- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-dcv-downloads-status.json`
 
 This keeps the large payload off GitHub releases and lets each Proxmox host distribute the exact thin-client image it currently serves.
 
@@ -132,6 +135,12 @@ Artifacts are written to `dist/`:
 - USB installer shell script
 - thin-client assistant `latest` tarball for host installation on arbitrary Proxmox systems
 - `SHA256SUMS`
+
+Validate the checkout:
+
+```bash
+./scripts/validate-project.sh
+```
 
 Install the latest release on any Proxmox host:
 
@@ -204,6 +213,24 @@ The resulting host-local USB writer endpoint is:
 
 ```text
 https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh
+```
+
+Refresh hosted artifacts manually on an installed Proxmox host:
+
+```bash
+sudo /opt/pve-dcv-integration/scripts/refresh-host-artifacts.sh
+```
+
+Run the installed host healthcheck:
+
+```bash
+/opt/pve-dcv-integration/scripts/check-proxmox-host.sh
+```
+
+Create a GitHub release from a clean checkout:
+
+```bash
+./scripts/create-github-release.sh
 ```
 
 Install only the Proxmox UI integration on a host:

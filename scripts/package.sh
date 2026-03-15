@@ -28,6 +28,7 @@ require_tool tar
 require_tool sha256sum
 
 mkdir -p "$DIST_DIR"
+rm -f "$DIST_DIR"/pve-thin-client-usb-installer-host-v*.sh
 rm -f \
   "$DIST_DIR/$ZIP_NAME" \
   "$DIST_DIR/$TARBALL_NAME" \
@@ -36,9 +37,9 @@ rm -f \
   "$DIST_DIR/$USB_PAYLOAD_LATEST_NAME" \
   "$DIST_DIR/$USB_INSTALLER_NAME" \
   "$DIST_DIR/$USB_INSTALLER_LATEST_NAME" \
-  "$DIST_DIR/pve-thin-client-usb-installer-host-v${VERSION}.sh" \
   "$DIST_DIR/pve-thin-client-usb-installer-host-latest.sh" \
   "$DIST_DIR/pve-dcv-downloads-index.html" \
+  "$DIST_DIR/pve-dcv-downloads-status.json" \
   "$DIST_DIR/$CHECKSUM_FILE"
 
 if [[ ! -f "$DIST_DIR/pve-thin-client-installer/live/filesystem.squashfs" || ! -f "$DIST_DIR/pve-thin-client-installer/live/initrd.img" || ! -f "$DIST_DIR/pve-thin-client-installer/live/vmlinuz" ]]; then
@@ -52,7 +53,7 @@ fi
 
 (
   cd "$ROOT_DIR"
-  tar -czf "$DIST_DIR/$TARBALL_NAME" extension proxmox-ui thin-client-assistant docs scripts README.md LICENSE CHANGELOG.md VERSION
+  tar -czf "$DIST_DIR/$TARBALL_NAME" extension proxmox-ui proxmox-host thin-client-assistant docs scripts README.md LICENSE CHANGELOG.md VERSION
 )
 
 install -m 0644 "$DIST_DIR/$TARBALL_NAME" "$DIST_DIR/$TARBALL_LATEST_NAME"

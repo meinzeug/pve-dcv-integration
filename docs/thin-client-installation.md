@@ -91,6 +91,7 @@ If the Proxmox host should publish a DCV session with a valid certificate on `ht
 
 The host installer will then configure an `nginx` reverse proxy that reuses the Proxmox TLS certificate from `/etc/pve/local/pveproxy-ssl.pem`.
 The same endpoint also publishes the locally built USB artifacts under `https://<host>:8443/pve-dcv-downloads/`.
+It also publishes operational metadata under `https://<host>:8443/pve-dcv-downloads/pve-dcv-downloads-status.json`.
 
 Non-interactive install:
 
@@ -114,6 +115,18 @@ https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host
 ```
 
 This avoids pushing the large payload through GitHub releases and keeps the writer aligned with the exact host-side build.
+
+On installed hosts, a systemd timer refreshes these hosted artifacts periodically. You can also run the refresh manually:
+
+```bash
+sudo /opt/pve-dcv-integration/scripts/refresh-host-artifacts.sh
+```
+
+To verify that a host installation is fully healthy:
+
+```bash
+/opt/pve-dcv-integration/scripts/check-proxmox-host.sh
+```
 
 List available target devices:
 

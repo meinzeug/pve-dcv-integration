@@ -12,6 +12,7 @@ HOST_INSTALLER_VERSIONED="$DIST_DIR/pve-thin-client-usb-installer-host-v${VERSIO
 HOST_INSTALLER_LATEST="$DIST_DIR/pve-thin-client-usb-installer-host-latest.sh"
 GENERIC_INSTALLER="$DIST_DIR/pve-thin-client-usb-installer-v${VERSION}.sh"
 PAYLOAD_URL="${BASE_URL%/}/pve-thin-client-usb-payload-latest.tar.gz"
+INSTALLER_URL="${BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh"
 
 [[ -f "$GENERIC_INSTALLER" ]] || {
   echo "Missing packaged USB installer: $GENERIC_INSTALLER" >&2
@@ -61,6 +62,7 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
   <ul>
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-host-latest.sh">USB installer launcher</a></li>
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-payload-latest.tar.gz">USB payload bundle</a></li>
+    <li><a href="${DOWNLOADS_PATH%/}/pve-dcv-downloads-status.json">Status JSON</a></li>
     <li><a href="${DOWNLOADS_PATH%/}/SHA256SUMS">SHA256SUMS</a></li>
   </ul>
   <p>The hosted USB installer is preconfigured to download its large payload from this same Proxmox host instead of GitHub.</p>
@@ -68,5 +70,29 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
 </html>
 EOF
 
+python3 - "$DIST_DIR/pve-dcv-downloads-status.json" "$VERSION" "$INSTALLER_URL" "$PAYLOAD_URL" "$HOST_INSTALLER_LATEST" "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+status_path = Path(sys.argv[1])
+version = sys.argv[2]
+installer_url = sys.argv[3]
+payload_url = sys.argv[4]
+installer_path = Path(sys.argv[5])
+payload_path = Path(sys.argv[6])
+
+payload = {
+    "version": version,
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "installer_url": installer_url,
+    "payload_url": payload_url,
+    "installer_size": installer_path.stat().st_size,
+    "payload_size": payload_path.stat().st_size,
+}
+status_path.write_text(json.dumps(payload, indent=2) + "\n")
+PY
+
 echo "Prepared host-local download artifacts under $DIST_DIR"
-echo "Hosted USB installer URL: ${BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh"
+echo "Hosted USB installer URL: $INSTALLER_URL"
