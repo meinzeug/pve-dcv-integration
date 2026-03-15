@@ -290,7 +290,7 @@ server {
         return 302 ${DOWNLOADS_PATH}/;
     }
 
-    location = ${DOWNLOADS_PATH}/ {
+    location ^~ ${DOWNLOADS_PATH}/ {
         alias ${ROOT_DIR}/dist/;
         add_header Cache-Control "no-store";
         autoindex on;

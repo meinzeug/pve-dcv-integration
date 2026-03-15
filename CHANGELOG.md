@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.4.7 - 2026-03-15
+
+- Fixed the host-side `nginx` download location so `/pve-dcv-downloads/<file>` is served as a real prefix path instead of falling through to the DCV backend.
+- Revalidated the Proxmox-hosted USB installer endpoint on `srv.thinover.net` after the hosted download routing fix.
+
 ## v0.4.6 - 2026-03-15
 
 - Reworked the USB distribution path so the large thin-client payload is served by each installed Proxmox host under `/pve-dcv-downloads/` instead of being expected from GitHub releases.
