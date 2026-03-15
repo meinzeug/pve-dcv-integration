@@ -113,6 +113,30 @@ Artifacts are written to `dist/`:
 - thin-client assistant `latest` tarball for the standalone USB writer bootstrap path
 - `SHA256SUMS`
 
+Install the latest release on any Proxmox host:
+
+```bash
+tmpdir="$(mktemp -d)"
+cd "$tmpdir"
+curl -fsSLo pve-dcv.tar.gz \
+  https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
+tar -xzf pve-dcv.tar.gz
+./scripts/install-proxmox-host.sh
+```
+
+This installs the project under `/opt/pve-dcv-integration`, rebuilds the packaged artifacts there and deploys the Proxmox UI integration if `/usr/share/pve-manager/` is present.
+
+Install only the Proxmox UI integration from a release tarball:
+
+```bash
+tmpdir="$(mktemp -d)"
+cd "$tmpdir"
+curl -fsSLo pve-dcv.tar.gz \
+  https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
+tar -xzf pve-dcv.tar.gz
+./scripts/install-proxmox-ui-integration.sh
+```
+
 Build the live installer assets used by the USB writer:
 
 ```bash
@@ -132,10 +156,10 @@ List candidate disks before writing:
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --list-devices
 ```
 
-Install the packaged project assets onto a Proxmox host:
+Install the packaged project assets from a local checkout onto a Proxmox host:
 
 ```bash
-sudo ./scripts/install-proxmox-host.sh
+./scripts/install-proxmox-host.sh
 ```
 
 This deploys the current repository state under `/opt/pve-dcv-integration` and refreshes packaged artifacts there for admin-side distribution.
@@ -143,7 +167,7 @@ This deploys the current repository state under `/opt/pve-dcv-integration` and r
 Install only the Proxmox UI integration on a host:
 
 ```bash
-sudo ./scripts/install-proxmox-ui-integration.sh
+./scripts/install-proxmox-ui-integration.sh
 ```
 
 ## Documentation

@@ -69,7 +69,18 @@ sudo ./thin-client-assistant/installer/install.sh
 Install project assets on a Proxmox host for local operator distribution:
 
 ```bash
-sudo ./scripts/install-proxmox-host.sh
+./scripts/install-proxmox-host.sh
+```
+
+Install the latest published release on any Proxmox host without cloning the repository:
+
+```bash
+tmpdir="$(mktemp -d)"
+cd "$tmpdir"
+curl -fsSLo pve-dcv.tar.gz \
+  https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
+tar -xzf pve-dcv.tar.gz
+./scripts/install-proxmox-host.sh
 ```
 
 Non-interactive install:

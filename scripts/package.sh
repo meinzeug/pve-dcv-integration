@@ -35,7 +35,7 @@ rm -f "$DIST_DIR/$ZIP_NAME" "$DIST_DIR/$TARBALL_NAME" "$DIST_DIR/$TARBALL_LATEST
 
 (
   cd "$ROOT_DIR"
-  tar -czf "$DIST_DIR/$TARBALL_NAME" thin-client-assistant docs scripts README.md LICENSE CHANGELOG.md VERSION
+  tar -czf "$DIST_DIR/$TARBALL_NAME" extension proxmox-ui thin-client-assistant docs scripts README.md LICENSE CHANGELOG.md VERSION
 )
 
 install -m 0644 "$DIST_DIR/$TARBALL_NAME" "$DIST_DIR/$TARBALL_LATEST_NAME"

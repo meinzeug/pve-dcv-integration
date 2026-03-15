@@ -9,10 +9,20 @@ TPL_BACKUP="$PVE_DIR/index.html.tpl.pve-dcv-integration.bak"
 PROJECT_VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
 INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/pve-dcv-integration.js?ver=[% version %]-pvedcv-${PROJECT_VERSION}\"></script>"
 
-if [[ "${EUID}" -ne 0 ]]; then
-  echo "This installer must run as root." >&2
+ensure_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if command -v sudo >/dev/null 2>&1; then
+    exec sudo "$0" "$@"
+  fi
+
+  echo "This installer must run as root or use sudo." >&2
   exit 1
-fi
+}
+
+ensure_root "$@"
 
 if [[ ! -d "$PVE_DIR/js" || ! -f "$TPL_TARGET" ]]; then
   echo "Proxmox UI files not found under $PVE_DIR" >&2

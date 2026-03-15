@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.1 - 2026-03-15
+
+- Added a documented GitHub-release installation path for deploying the project onto arbitrary Proxmox hosts without a git checkout.
+- Updated the Proxmox host installers to self-escalate through `sudo` instead of requiring an explicit root invocation from the user.
+- Added automatic `rsync` dependency installation for the host deployment script so extracted release tarballs are directly installable on fresh hosts.
+- Fixed the release tarball contents so host deployments from GitHub releases include the Proxmox UI asset and extension sources needed for repackaging.
+
 ## v0.4.0 - 2026-03-15
 
 - Rebuilt the USB installer flow around a bootable live installer architecture inspired by the existing ThinOverNet approach.
