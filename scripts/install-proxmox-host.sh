@@ -46,6 +46,7 @@ rsync -a --delete \
 
 if [[ -d /usr/share/pve-manager/js ]]; then
   "$INSTALL_DIR/scripts/install-proxmox-ui-integration.sh"
+  "$INSTALL_DIR/scripts/install-proxmox-dcv-proxy.sh"
 fi
 
 echo "Installed project assets to $INSTALL_DIR"

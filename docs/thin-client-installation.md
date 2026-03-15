@@ -83,6 +83,13 @@ tar -xzf pve-dcv.tar.gz
 ./scripts/install-proxmox-host.sh
 ```
 
+If the Proxmox host should publish a DCV session with a valid certificate on `https://<host>:8443/`, either:
+
+- set `PVE_DCV_PROXY_VMID=<vmid>` before running the installer, or
+- set `PVE_DCV_PROXY_BACKEND_HOST=<ip-or-host>` and optionally `PVE_DCV_PROXY_BACKEND_PORT=<port>`
+
+The host installer will then configure an `nginx` reverse proxy that reuses the Proxmox TLS certificate from `/etc/pve/local/pveproxy-ssl.pem`.
+
 Non-interactive install:
 
 ```bash

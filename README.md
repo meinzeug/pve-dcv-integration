@@ -21,6 +21,7 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - Can deploy the same UI behavior directly on a Proxmox host without requiring a browser extension.
 - Installs a server-side JavaScript asset into `/usr/share/pve-manager/js/`.
 - Patches `index.html.tpl` with a backup and restarts `pveproxy`.
+- Can terminate DCV TLS on the Proxmox host with the existing Proxmox certificate and proxy traffic to a backend DCV VM.
 
 ### 2. Linux thin-client assistant
 
@@ -125,6 +126,19 @@ tar -xzf pve-dcv.tar.gz
 ```
 
 This installs the project under `/opt/pve-dcv-integration`, rebuilds the packaged artifacts there and deploys the Proxmox UI integration if `/usr/share/pve-manager/` is present.
+If a DCV backend can be identified, it also configures an HTTPS proxy on `https://<proxmox-host>:8443/` using the same certificate as the Proxmox web UI.
+
+To force the DCV proxy installation for a specific VM or backend:
+
+```bash
+PVE_DCV_PROXY_VMID=100 ./scripts/install-proxmox-host.sh
+```
+
+or
+
+```bash
+PVE_DCV_PROXY_BACKEND_HOST=10.10.10.100 PVE_DCV_PROXY_BACKEND_PORT=8443 ./scripts/install-proxmox-host.sh
+```
 
 Install only the Proxmox UI integration from a release tarball:
 
@@ -168,6 +182,12 @@ Install only the Proxmox UI integration on a host:
 
 ```bash
 ./scripts/install-proxmox-ui-integration.sh
+```
+
+Install or refresh the DCV TLS proxy on a Proxmox host:
+
+```bash
+./scripts/install-proxmox-dcv-proxy.sh
 ```
 
 ## Documentation

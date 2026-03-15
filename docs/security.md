@@ -32,6 +32,7 @@ Recommended hardening:
 - place devices in a network segment that can reach Proxmox/DCV but not unnecessary destinations
 - pin browser policy or kiosk flags for noVNC deployments
 - manage package updates through your standard OS patching process
+- when exposing DCV through the bundled Proxmox host proxy, reuse a valid Proxmox certificate and do not publish the backend VM's self-signed certificate directly
 
 ## Known non-goals in this baseline
 

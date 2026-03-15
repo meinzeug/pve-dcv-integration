@@ -5,6 +5,7 @@
 The repository is split into two deployable product surfaces:
 
 - `extension/` adds a DCV action to the Proxmox VE web UI
+- `proxmox-ui/` and `scripts/` install the same UI behavior plus optional host-side DCV TLS proxying directly on a Proxmox host
 - `thin-client-assistant/` prepares a Linux endpoint for SPICE, noVNC or DCV access
 
 These components are intentionally decoupled. The browser extension enhances the Proxmox operator workflow, while the thin-client assistant standardizes endpoint behavior on dedicated client devices.
@@ -30,6 +31,22 @@ Important design constraints:
 - No embedded credentials
 - Same-origin API usage only
 - Configurable launch template and fallback metadata keys
+
+## Proxmox host integration architecture
+
+The host-side installation path adds two operational pieces:
+
+1. a JavaScript asset loaded by the Proxmox web UI
+2. an optional `nginx` reverse proxy on `8443` that reuses `/etc/pve/local/pveproxy-ssl.pem`
+
+The DCV proxy is designed for environments where the backend VM exposes a self-signed DCV web certificate.
+The installer can either:
+
+- auto-detect a single matching backend from VM metadata such as `dcv-url` and `dcv-ip`
+- use an explicit `PVE_DCV_PROXY_VMID`
+- use an explicit `PVE_DCV_PROXY_BACKEND_HOST` and `PVE_DCV_PROXY_BACKEND_PORT`
+
+When enabled, the host installer also removes old `iptables` DNAT rules on the same DCV port so that local TLS termination can bind cleanly.
 
 ## Thin-client assistant architecture
 
@@ -94,4 +111,5 @@ The release script creates:
 
 - a browser extension zip for manual browser installation
 - a thin-client assistant tarball for host-side deployment
+- the host deployment scripts that can install UI integration and DCV TLS proxying from a release tarball
 - sha256 checksums for release verification

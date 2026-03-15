@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.2 - 2026-03-15
+
+- Added a Proxmox-host DCV TLS proxy installer that can publish a backend DCV service on `https://<proxmox-host>:8443/` with the already valid Proxmox certificate.
+- Integrated DCV proxy deployment into the standard Proxmox host installer so UI deployment can also fix invalid/self-signed DCV web certificates.
+- Added backend auto-detection from VM metadata and guest-agent IPs, plus explicit `PVE_DCV_PROXY_VMID` and `PVE_DCV_PROXY_BACKEND_HOST` installation controls.
+- Added cleanup of legacy host-side `iptables` DNAT rules on the DCV port so the local TLS proxy can bind cleanly.
+
 ## v0.4.1 - 2026-03-15
 
 - Added a documented GitHub-release installation path for deploying the project onto arbitrary Proxmox hosts without a git checkout.
