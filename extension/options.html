@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PVE DCV Integration - Options</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      max-width: 840px;
+      color: #1f2937;
+    }
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: 600;
+    }
+    input, textarea {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 18px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      background: #0f62fe;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .hint {
+      margin-top: 8px;
+      color: #4b5563;
+      font-size: 13px;
+    }
+    .ok {
+      margin-top: 12px;
+      color: #166534;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>PVE DCV Integration</h1>
+  <p>Configure how the DCV URL should be generated.</p>
+
+  <label for="urlTemplate">Launch URL template</label>
+  <input id="urlTemplate" type="text" placeholder="https://{ip}:8443/" />
+  <div class="hint">Supported placeholders: {ip}, {node}, {vmid}, {host}</div>
+
+  <label for="fallbackUrl">Fallback URL (optional)</label>
+  <input id="fallbackUrl" type="text" placeholder="https://dcv-gateway.example.com/" />
+
+  <label for="metadataKeys">Metadata keys (comma separated)</label>
+  <input id="metadataKeys" type="text" placeholder="dcv-url,dcv-host,dcv-ip" />
+  <div class="hint">These keys are searched in the VM description when guest-agent data is missing.</div>
+
+  <button id="saveBtn">Save</button>
+  <div id="status" class="ok"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

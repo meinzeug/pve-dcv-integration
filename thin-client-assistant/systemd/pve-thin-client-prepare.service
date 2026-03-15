@@ -1,0 +1,11 @@
+[Unit]
+Description=Prepare PVE thin-client runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/pve-thin-client/prepare-runtime.sh
+
+[Install]
+WantedBy=multi-user.target

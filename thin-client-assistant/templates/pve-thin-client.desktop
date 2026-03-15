@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PVE Thin Client
+Comment=Launch the configured Proxmox thin-client mode
+Exec=/usr/local/bin/pve-thin-client-launch
+Terminal=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
+Categories=Network;RemoteAccess;

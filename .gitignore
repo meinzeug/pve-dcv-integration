@@ -1,0 +1,8 @@
+dist/
+.DS_Store
+*.swp
+*.swo
+*.tmp
+*.log
+node_modules/
+tmp/
