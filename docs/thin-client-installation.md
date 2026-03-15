@@ -10,6 +10,8 @@ Supported runtime choices:
 - `NOVNC`
 - `DCV`
 
+The repository also ships a USB writer helper that prepares a removable drive with the thin-client installer payload and a local start menu.
+
 ## Current assumptions
 
 - Debian or Ubuntu style package management
@@ -63,6 +65,12 @@ sudo ./thin-client-assistant/installer/install.sh \
   --mode DCV \
   --runtime-user thinclient \
   --dcv-url dcv://dcv-gateway.internal/session/example
+```
+
+Prepare a USB installer stick:
+
+```bash
+sudo ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --device /dev/sdX
 ```
 
 ## Post-install verification

@@ -20,7 +20,9 @@ Core behavior:
 3. Query the Proxmox API on the same origin.
 4. Attempt guest-agent IP lookup through `network-get-interfaces`.
 5. Fall back to VM config metadata from the VM description.
-6. Build a launch URL and open the target in a new tab.
+6. Hook the console dropdown at render time and append a `DCV` action beside `noVNC` and `SPICE`.
+7. Render a neighboring `USB Installer` toolbar button for downloading the USB writer script.
+8. Build a launch URL and open the target in a new tab.
 
 Important design constraints:
 

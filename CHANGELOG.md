@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.0 - 2026-03-15
+
+- Reworked the extension to inject `DCV` into the existing Proxmox console dropdown instead of using only a floating page button.
+- Added a `USB Installer` toolbar button that downloads the thin-client USB writer script.
+- Added a first USB writer script and starter payload for building a deployable thin-client installer stick.
+
 ## v0.2.1 - 2026-03-15
 
 - Added explicit packaging dependency checks for `zip`, `tar` and `sha256sum`.

@@ -1,7 +1,12 @@
 (() => {
-  const BUTTON_ID = "pve-dcv-open-btn";
+  const MENU_TEXT = "Konsole";
+  const DCV_MENU_LABEL = "DCV";
+  const USB_BUTTON_LABEL = "USB Installer";
+  const BUTTON_MARKER = "data-pve-dcv-integration";
   const DEFAULT_TEMPLATE = "https://{ip}:8443/";
   const DEFAULT_METADATA_KEYS = ["dcv-url", "dcv-host", "dcv-ip"];
+  const DEFAULT_USB_INSTALLER_URL =
+    "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh";
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -11,6 +16,10 @@
     } catch {
       return window.location.hash || "";
     }
+  }
+
+  function isVmView() {
+    return /qemu\/(\d+)/i.test(decodeHash());
   }
 
   async function parseVmContext() {
@@ -32,7 +41,7 @@
           if (vm?.node) node = vm.node;
         }
       } catch {
-        // fallback below
+        // best effort
       }
     }
 
@@ -48,7 +57,12 @@
   async function getOptions() {
     return new Promise((resolve) => {
       chrome.storage.sync.get(
-        { urlTemplate: DEFAULT_TEMPLATE, fallbackUrl: "", metadataKeys: DEFAULT_METADATA_KEYS.join(",") },
+        {
+          urlTemplate: DEFAULT_TEMPLATE,
+          fallbackUrl: "",
+          metadataKeys: DEFAULT_METADATA_KEYS.join(","),
+          usbInstallerUrl: DEFAULT_USB_INSTALLER_URL
+        },
         (data) => resolve(data)
       );
     });
@@ -84,7 +98,7 @@
   }
 
   function parseDescriptionMeta(description, metadataKeys) {
-    const output = { dcvUrl: null, dcvHost: null, dcvIp: null, raw: {} };
+    const output = { dcvUrl: null, dcvHost: null, dcvIp: null };
     const text = String(description || "");
     const keys = Array.from(
       new Set(
@@ -98,8 +112,6 @@
       if (!match) continue;
 
       const value = match[1].trim();
-      output.raw[key] = value;
-
       if (key === "dcv-url" && /^https?:\/\//i.test(value)) output.dcvUrl = value;
       if (key === "dcv-host" && !output.dcvHost) output.dcvHost = value;
       if (key === "dcv-ip" && !output.dcvIp) output.dcvIp = pickCandidateIp(value);
@@ -156,7 +168,6 @@
     }
 
     if (dcvUrl) return dcvUrl;
-
     if (!ip && dcvIp) ip = dcvIp;
     if (!ip && dcvHost) ip = dcvHost;
 
@@ -173,11 +184,10 @@
     }
 
     if (options.fallbackUrl) return options.fallbackUrl;
-
     return null;
   }
 
-  async function onDcvClick() {
+  async function openDcv() {
     const ctx = await parseVmContext();
     if (!ctx) {
       alert("DCV: Keine VM-Ansicht erkannt.");
@@ -187,7 +197,7 @@
     const launchUrl = await buildLaunchUrl(ctx);
     if (!launchUrl) {
       alert(
-        "DCV URL konnte nicht ermittelt werden.\\n" +
+        "DCV URL konnte nicht ermittelt werden.\n" +
           "Pruefe QEMU Guest Agent oder setze dcv-url/dcv-host in die VM-Beschreibung."
       );
       return;
@@ -196,48 +206,140 @@
     window.open(launchUrl, "_blank", "noopener,noreferrer");
   }
 
-  function ensureButton() {
-    const ctxHash = decodeHash();
-    const looksLikeVm = /qemu\/(\d+)/i.test(ctxHash);
-
-    const existing = document.getElementById(BUTTON_ID);
-    if (!looksLikeVm) {
-      if (existing) existing.remove();
+  async function downloadUsbInstaller() {
+    const options = await getOptions();
+    const url = String(options.usbInstallerUrl || DEFAULT_USB_INSTALLER_URL).trim();
+    if (!url) {
+      alert("USB Installer URL ist nicht konfiguriert.");
       return;
     }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
 
-    if (existing) return;
+  function createToolbarButton(label, onClick) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute(BUTTON_MARKER, label);
+    button.className = "x-btn-text";
+    button.style.marginLeft = "6px";
+    button.style.padding = "4px 10px";
+    button.style.border = "1px solid #b5b8c8";
+    button.style.background = "#f5f5f5";
+    button.style.borderRadius = "3px";
+    button.style.cursor = "pointer";
+    button.style.lineHeight = "20px";
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onClick();
+    });
+    return button;
+  }
 
-    const btn = document.createElement("button");
-    btn.id = BUTTON_ID;
-    btn.textContent = "DCV";
-    btn.type = "button";
-    btn.style.position = "fixed";
-    btn.style.right = "16px";
-    btn.style.bottom = "16px";
-    btn.style.zIndex = "99999";
-    btn.style.padding = "10px 14px";
-    btn.style.border = "0";
-    btn.style.borderRadius = "10px";
-    btn.style.cursor = "pointer";
-    btn.style.fontWeight = "700";
-    btn.style.background = "#0f62fe";
-    btn.style.color = "#fff";
-    btn.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
-    btn.title = "Open NICE DCV";
-    btn.addEventListener("click", onDcvClick);
+  function isConsoleMenuTrigger(element) {
+    const text = String(element.textContent || "").trim();
+    return text === MENU_TEXT || text.includes(MENU_TEXT);
+  }
 
-    document.body.appendChild(btn);
+  function findToolbarRow() {
+    const buttons = Array.from(document.querySelectorAll("button, a, div, span"));
+    for (const element of buttons) {
+      if (!isConsoleMenuTrigger(element)) continue;
+      const row =
+        element.closest(".x-toolbar") ||
+        element.closest(".x-box-inner") ||
+        element.closest(".x-panel-header") ||
+        element.parentElement;
+      if (row) return row;
+    }
+    return null;
+  }
+
+  function ensureToolbarButtons() {
+    document.querySelectorAll(`[${BUTTON_MARKER}]`).forEach((node) => {
+      if (!isVmView()) node.remove();
+    });
+
+    if (!isVmView()) return;
+
+    const toolbar = findToolbarRow();
+    if (!toolbar) return;
+
+    const existingUsb = toolbar.querySelector(`[${BUTTON_MARKER}="${USB_BUTTON_LABEL}"]`);
+    if (!existingUsb) {
+      const usbButton = createToolbarButton(USB_BUTTON_LABEL, downloadUsbInstaller);
+      toolbar.appendChild(usbButton);
+    }
+  }
+
+  function getVisibleMenu() {
+    const menus = Array.from(document.querySelectorAll(".x-menu, [role='menu']"));
+    return menus.find((menu) => menu.offsetParent !== null) || null;
+  }
+
+  function menuAlreadyHasDcv(menu) {
+    return Array.from(menu.querySelectorAll("*")).some((node) => String(node.textContent || "").trim() === DCV_MENU_LABEL);
+  }
+
+  function createDcvMenuItem() {
+    const item = document.createElement("a");
+    item.href = "#";
+    item.setAttribute(BUTTON_MARKER, DCV_MENU_LABEL);
+    item.className = "x-menu-item";
+    item.style.display = "block";
+    item.style.padding = "4px 24px 4px 24px";
+    item.style.cursor = "pointer";
+    item.textContent = DCV_MENU_LABEL;
+    item.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openDcv();
+    });
+    return item;
+  }
+
+  function ensureDcvMenuItem() {
+    if (!isVmView()) return;
+    const menu = getVisibleMenu();
+    if (!menu) return;
+
+    const hasConsoleItems = Array.from(menu.querySelectorAll("*")).some((node) => {
+      const text = String(node.textContent || "").trim();
+      return text === "noVNC" || text === "SPICE";
+    });
+
+    if (!hasConsoleItems || menuAlreadyHasDcv(menu)) return;
+    menu.appendChild(createDcvMenuItem());
   }
 
   async function boot() {
-    for (let i = 0; i < 5; i += 1) {
-      ensureButton();
+    for (let i = 0; i < 12; i += 1) {
+      ensureToolbarButtons();
+      ensureDcvMenuItem();
       await sleep(500);
     }
 
-    window.addEventListener("hashchange", ensureButton);
-    const observer = new MutationObserver(() => ensureButton());
+    window.addEventListener("hashchange", () => {
+      ensureToolbarButtons();
+      ensureDcvMenuItem();
+    });
+
+    document.addEventListener(
+      "click",
+      () => {
+        window.setTimeout(() => {
+          ensureToolbarButtons();
+          ensureDcvMenuItem();
+        }, 50);
+      },
+      true
+    );
+
+    const observer = new MutationObserver(() => {
+      ensureToolbarButtons();
+      ensureDcvMenuItem();
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 

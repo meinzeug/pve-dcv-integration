@@ -13,6 +13,8 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - Resolves guest IPs through the Proxmox API and QEMU guest agent where available.
 - Supports metadata fallbacks from the VM description if no guest IP is available.
 - Opens either a generated NICE DCV URL or a metadata-provided direct URL.
+- Hooks the existing Proxmox `Konsole` dropdown and appends a `DCV` menu item next to `noVNC` and `SPICE`.
+- Adds a `USB Installer` toolbar button beside the console menu for downloading the thin-client USB writer script.
 
 ### 2. Linux thin-client assistant
 
@@ -58,6 +60,7 @@ The thin-client assistant installs a first real implementation baseline:
 - `runtime/prepare-runtime.sh` validates runtime prerequisites on boot
 - `systemd/pve-thin-client-prepare.service` prepares the environment before graphical login
 - `templates/` provides config, autostart and environment file templates
+- `usb/pve-thin-client-usb-installer.sh` writes a USB installer payload to a removable drive
 
 Runtime modes:
 
@@ -85,6 +88,7 @@ Artifacts are written to `dist/`:
 
 - browser extension zip
 - thin-client assistant tarball
+- USB installer shell script
 - `SHA256SUMS`
 
 Install the packaged project assets onto a Proxmox host:

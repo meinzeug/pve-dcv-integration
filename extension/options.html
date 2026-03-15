@@ -61,6 +61,10 @@
   <input id="metadataKeys" type="text" placeholder="dcv-url,dcv-host,dcv-ip" />
   <div class="hint">These keys are searched in the VM description when guest-agent data is missing.</div>
 
+  <label for="usbInstallerUrl">USB installer download URL</label>
+  <input id="usbInstallerUrl" type="text" placeholder="https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh" />
+  <div class="hint">This URL is opened when the toolbar button "USB Installer" is clicked.</div>
+
   <button id="saveBtn">Save</button>
   <div id="status" class="ok"></div>
 
