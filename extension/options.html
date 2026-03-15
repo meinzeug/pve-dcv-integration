@@ -62,8 +62,8 @@
   <div class="hint">These keys are searched in the VM description when guest-agent data is missing.</div>
 
   <label for="usbInstallerUrl">USB installer download URL</label>
-  <input id="usbInstallerUrl" type="text" placeholder="https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh" />
-  <div class="hint">This URL is opened when the toolbar button "USB Installer" is clicked.</div>
+  <input id="usbInstallerUrl" type="text" placeholder="https://proxmox-host.example:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh" />
+  <div class="hint">By default this should point to the local Proxmox host download endpoint, not a large GitHub release asset.</div>
 
   <button id="saveBtn">Save</button>
   <div id="status" class="ok"></div>

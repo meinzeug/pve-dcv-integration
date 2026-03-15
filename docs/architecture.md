@@ -37,7 +37,8 @@ Important design constraints:
 The host-side installation path adds two operational pieces:
 
 1. a JavaScript asset loaded by the Proxmox web UI
-2. an optional `nginx` reverse proxy on `8443` that reuses `/etc/pve/local/pveproxy-ssl.pem`
+2. a runtime config asset that publishes host-local download URLs into the Proxmox UI
+3. an `nginx` endpoint on `8443` that reuses `/etc/pve/local/pveproxy-ssl.pem`
 
 The DCV proxy is designed for environments where the backend VM exposes a self-signed DCV web certificate.
 The installer can either:
@@ -48,6 +49,7 @@ The installer can either:
 
 When enabled, the host installer also removes old `iptables` DNAT rules on the same DCV port so that local TLS termination can bind cleanly.
 The proxied DCV page can additionally inject a small auto-login helper that consumes `pveDcvUser` and `pveDcvPassword` query parameters generated from VM metadata.
+The same `nginx` instance also serves `/pve-dcv-downloads/` directly from the host-local `dist/` tree so large thin-client payload bundles stay on the Proxmox host and do not need to be uploaded to GitHub releases.
 
 ## Thin-client assistant architecture
 
@@ -112,5 +114,9 @@ The release script creates:
 
 - a browser extension zip for manual browser installation
 - a thin-client assistant tarball for host-side deployment
-- the host deployment scripts that can install UI integration and DCV TLS proxying from a release tarball
+- a locally packaged USB payload tarball intended for host-side distribution
+- host deployment scripts that can install UI integration, hosted download endpoints and optional DCV TLS proxying from a release tarball
 - sha256 checksums for release verification
+
+Operationally, the public GitHub release only needs to carry the small deployment artifacts.
+After installation on a Proxmox host, the host rebuilds its own `dist/` tree and serves the large USB payload from `/pve-dcv-downloads/`.

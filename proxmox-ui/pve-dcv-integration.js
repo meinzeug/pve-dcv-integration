@@ -1,11 +1,15 @@
 (function() {
   "use strict";
 
+  function defaultUsbInstallerUrl() {
+    return "https://" + window.location.hostname + ":8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh";
+  }
+
   var DEFAULTS = {
     urlTemplate: "https://{ip}:8443/",
     fallbackUrl: "",
     metadataKeys: ["dcv-url", "dcv-host", "dcv-ip", "dcv-user", "dcv-password", "dcv-auth-token", "dcv-session", "dcv-auto-submit"],
-    usbInstallerUrl: "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh"
+    usbInstallerUrl: null
   };
 
   function getConfig() {
@@ -14,7 +18,7 @@
       urlTemplate: runtimeConfig.urlTemplate || DEFAULTS.urlTemplate,
       fallbackUrl: runtimeConfig.fallbackUrl || DEFAULTS.fallbackUrl,
       metadataKeys: Array.isArray(runtimeConfig.metadataKeys) ? runtimeConfig.metadataKeys : DEFAULTS.metadataKeys,
-      usbInstallerUrl: runtimeConfig.usbInstallerUrl || DEFAULTS.usbInstallerUrl
+      usbInstallerUrl: runtimeConfig.usbInstallerUrl || defaultUsbInstallerUrl()
     };
   }
 

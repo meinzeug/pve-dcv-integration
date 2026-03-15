@@ -28,7 +28,18 @@ require_tool tar
 require_tool sha256sum
 
 mkdir -p "$DIST_DIR"
-rm -f "$DIST_DIR/$ZIP_NAME" "$DIST_DIR/$TARBALL_NAME" "$DIST_DIR/$TARBALL_LATEST_NAME" "$DIST_DIR/$USB_PAYLOAD_NAME" "$DIST_DIR/$USB_PAYLOAD_LATEST_NAME" "$DIST_DIR/$USB_INSTALLER_NAME" "$DIST_DIR/$USB_INSTALLER_LATEST_NAME" "$DIST_DIR/$CHECKSUM_FILE"
+rm -f \
+  "$DIST_DIR/$ZIP_NAME" \
+  "$DIST_DIR/$TARBALL_NAME" \
+  "$DIST_DIR/$TARBALL_LATEST_NAME" \
+  "$DIST_DIR/$USB_PAYLOAD_NAME" \
+  "$DIST_DIR/$USB_PAYLOAD_LATEST_NAME" \
+  "$DIST_DIR/$USB_INSTALLER_NAME" \
+  "$DIST_DIR/$USB_INSTALLER_LATEST_NAME" \
+  "$DIST_DIR/pve-thin-client-usb-installer-host-v${VERSION}.sh" \
+  "$DIST_DIR/pve-thin-client-usb-installer-host-latest.sh" \
+  "$DIST_DIR/pve-dcv-downloads-index.html" \
+  "$DIST_DIR/$CHECKSUM_FILE"
 
 if [[ ! -f "$DIST_DIR/pve-thin-client-installer/live/filesystem.squashfs" || ! -f "$DIST_DIR/pve-thin-client-installer/live/initrd.img" || ! -f "$DIST_DIR/pve-thin-client-installer/live/vmlinuz" ]]; then
   "$ROOT_DIR/scripts/build-thin-client-installer.sh"

@@ -6,9 +6,60 @@ LB_TEMPLATE_DIR="$ROOT_DIR/thin-client-assistant/live-build"
 BUILD_DIR="$ROOT_DIR/.build/pve-thin-client-live-build"
 DIST_DIR="$ROOT_DIR/dist/pve-thin-client-installer"
 THINCLIENT_ARCH="${THINCLIENT_ARCH:-amd64}"
+OWNER_UID="${SUDO_UID:-$(id -u)}"
+OWNER_GID="${SUDO_GID:-$(id -g)}"
 
-sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+ensure_root() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    return 0
+  fi
+
+  exec sudo THINCLIENT_ARCH="$THINCLIENT_ARCH" "$0" "$@"
+}
+
+disable_proxmox_enterprise_repo() {
+  local found=0
+  local file
+
+  while IFS= read -r file; do
+    grep -q 'enterprise.proxmox.com' "$file" || continue
+    cp "$file" "$file.pve-dcv-backup"
+    awk '!/enterprise\.proxmox\.com/' "$file.pve-dcv-backup" > "$file"
+    found=1
+  done < <(find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' \) 2>/dev/null)
+
+  return $(( ! found ))
+}
+
+restore_proxmox_enterprise_repo() {
+  local backup original
+
+  while IFS= read -r backup; do
+    original="${backup%.pve-dcv-backup}"
+    mv "$backup" "$original"
+  done < <(find /etc/apt -maxdepth 2 -type f -name '*.pve-dcv-backup' 2>/dev/null)
+}
+
+apt_update_with_proxmox_fallback() {
+  if apt-get update; then
+    return 0
+  fi
+
+  if ! disable_proxmox_enterprise_repo; then
+    echo "apt-get update failed and no Proxmox enterprise repository fallback was available." >&2
+    exit 1
+  fi
+
+  if ! apt-get update; then
+    restore_proxmox_enterprise_repo
+    exit 1
+  fi
+  restore_proxmox_enterprise_repo
+}
+
+ensure_root "$@"
+apt_update_with_proxmox_fallback
+DEBIAN_FRONTEND=noninteractive apt-get install -y \
   live-build \
   debootstrap \
   squashfs-tools \
@@ -19,25 +70,25 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
   curl \
   ca-certificates
 
-sudo rm -rf "$BUILD_DIR"
-sudo install -d -m 0755 "$BUILD_DIR" "$DIST_DIR/live"
-sudo rsync -a --delete "$LB_TEMPLATE_DIR/" "$BUILD_DIR/"
+rm -rf "$BUILD_DIR"
+install -d -m 0755 "$BUILD_DIR" "$DIST_DIR/live"
+rsync -a --delete "$LB_TEMPLATE_DIR/" "$BUILD_DIR/"
 
-sudo install -d -m 0755 "$BUILD_DIR/config/includes.chroot/usr/local/lib"
-sudo rsync -a --delete "$ROOT_DIR/thin-client-assistant/" "$BUILD_DIR/config/includes.chroot/usr/local/lib/pve-thin-client/"
-sudo chmod 0755 "$BUILD_DIR"
+install -d -m 0755 "$BUILD_DIR/config/includes.chroot/usr/local/lib"
+rsync -a --delete "$ROOT_DIR/thin-client-assistant/" "$BUILD_DIR/config/includes.chroot/usr/local/lib/pve-thin-client/"
+chmod 0755 "$BUILD_DIR"
 
 pushd "$BUILD_DIR" >/dev/null
-sudo chmod +x auto/config
+chmod +x auto/config
 THINCLIENT_ARCH="$THINCLIENT_ARCH" ./auto/config
-sudo lb clean --purge || true
+lb clean --purge || true
 BUILD_RC=0
-if ! sudo lb build; then
+if ! lb build; then
   BUILD_RC=$?
 fi
 popd >/dev/null
 
-sudo chown -R "$(id -u):$(id -g)" "$BUILD_DIR"
+chown -R "$OWNER_UID:$OWNER_GID" "$BUILD_DIR" "$DIST_DIR"
 chmod -R u+rwX "$DIST_DIR"
 
 mapfile -t kernel_images < <(find "$BUILD_DIR/binary/live" -maxdepth 1 -type f -name 'vmlinuz*' | sort)

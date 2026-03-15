@@ -14,7 +14,7 @@ The repository also ships a USB writer helper that prepares a removable drive wi
 The current USB flow now consists of three layers:
 
 - a local USB writer that can self-escalate to `sudo`
-- a release payload bundle with prebuilt live assets for the standalone writer path
+- a host-served payload bundle with prebuilt live assets for the standalone writer path
 - a bootable live installer environment
 - a local-disk installer that copies the thin-client runtime to the target disk
 
@@ -90,6 +90,7 @@ If the Proxmox host should publish a DCV session with a valid certificate on `ht
 - set `PVE_DCV_PROXY_BACKEND_HOST=<ip-or-host>` and optionally `PVE_DCV_PROXY_BACKEND_PORT=<port>`
 
 The host installer will then configure an `nginx` reverse proxy that reuses the Proxmox TLS certificate from `/etc/pve/local/pveproxy-ssl.pem`.
+The same endpoint also publishes the locally built USB artifacts under `https://<host>:8443/pve-dcv-downloads/`.
 
 Non-interactive install:
 
@@ -106,7 +107,13 @@ Prepare a USB installer stick:
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --device /dev/sdX
 ```
 
-The release-distributed `pve-thin-client-usb-installer-latest.sh` prefers a prebuilt USB payload tarball and therefore avoids a local live-build dependency on the operator workstation in the normal path.
+The preferred standalone entrypoint is the host-distributed `pve-thin-client-usb-installer-host-latest.sh`, which is preconfigured to fetch the matching payload from the same Proxmox host:
+
+```text
+https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh
+```
+
+This avoids pushing the large payload through GitHub releases and keeps the writer aligned with the exact host-side build.
 
 List available target devices:
 

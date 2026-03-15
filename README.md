@@ -15,14 +15,17 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - Opens either a generated NICE DCV URL or a metadata-provided direct URL.
 - Hooks the existing Proxmox `Konsole` dropdown and appends a `DCV` menu item next to `noVNC` and `SPICE`.
 - Adds a `USB Installer` toolbar button beside the console menu for downloading the thin-client USB writer script.
+- Points the `USB Installer` button at a host-local download endpoint on the Proxmox server so large payload bundles are not fetched from GitHub.
 
 ### 1b. Proxmox host UI integration
 
 - Can deploy the same UI behavior directly on a Proxmox host without requiring a browser extension.
 - Installs a server-side JavaScript asset into `/usr/share/pve-manager/js/`.
+- Installs a small runtime config asset that points the UI to host-local thin-client download URLs.
 - Patches `index.html.tpl` with a backup and restarts `pveproxy`.
 - Can terminate DCV TLS on the Proxmox host with the existing Proxmox certificate and proxy traffic to a backend DCV VM.
 - Can inject a lightweight DCV web auto-login helper on the proxied DCV page when VM metadata provides per-VM credentials.
+- Publishes packaged thin-client artifacts on `https://<proxmox-host>:8443/pve-dcv-downloads/`.
 
 ### 2. Linux thin-client assistant
 
@@ -66,6 +69,13 @@ If guest-agent IP lookup fails, the extension parses VM description metadata suc
 
 If `dcv-url` is present, it takes precedence over any guest-agent IP so internet-facing Proxmox deployments can force the public DCV proxy URL instead of an internal VM address.
 
+For the USB workflow, the preferred operator path is now host-local:
+
+- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh`
+- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-payload-latest.tar.gz`
+
+This keeps the large payload off GitHub releases and lets each Proxmox host distribute the exact thin-client image it currently serves.
+
 ## Thin-client assistant behavior
 
 The thin-client assistant installs a first real implementation baseline:
@@ -96,6 +106,7 @@ USB/live installer highlights:
 - bootable GPT layout with both BIOS GRUB and EFI support
 - live installer menu that collects connection mode, network and credentials before local-disk installation
 - local-disk runtime that boots the live image from disk and re-applies the saved network profile on startup
+- host-local distribution model where the USB writer downloads its payload from the target Proxmox host
 
 ## Installation and packaging
 
@@ -117,9 +128,9 @@ Artifacts are written to `dist/`:
 
 - browser extension zip
 - thin-client assistant tarball
-- USB payload tarball with prebuilt live installer assets
+- USB payload tarball with prebuilt live installer assets for host-side distribution
 - USB installer shell script
-- thin-client assistant `latest` tarball for the standalone USB writer bootstrap path
+- thin-client assistant `latest` tarball for host installation on arbitrary Proxmox systems
 - `SHA256SUMS`
 
 Install the latest release on any Proxmox host:
@@ -134,7 +145,8 @@ tar -xzf pve-dcv.tar.gz
 ```
 
 This installs the project under `/opt/pve-dcv-integration`, rebuilds the packaged artifacts there and deploys the Proxmox UI integration if `/usr/share/pve-manager/` is present.
-If a DCV backend can be identified, it also configures an HTTPS proxy on `https://<proxmox-host>:8443/` using the same certificate as the Proxmox web UI.
+It also prepares host-local thin-client download artifacts and publishes them on `https://<proxmox-host>:8443/pve-dcv-downloads/`.
+If a DCV backend can be identified, the same HTTPS endpoint also proxies `https://<proxmox-host>:8443/` to the backend DCV service using the same certificate as the Proxmox web UI.
 
 To force the DCV proxy installation for a specific VM or backend:
 
@@ -172,7 +184,8 @@ Write a bootable installer stick as a normal user:
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh
 ```
 
-The standalone `latest` USB writer now downloads a prebuilt USB payload bundle from the GitHub release, unmounts the selected target automatically and no longer depends on a successful local `live-build` run on the workstation.
+When the script runs from a full checkout, it can build or reuse local assets directly.
+When it runs as a standalone host-distributed script, it downloads the prebuilt payload from the Proxmox host that served it.
 
 List candidate disks before writing:
 
@@ -187,6 +200,11 @@ Install the packaged project assets from a local checkout onto a Proxmox host:
 ```
 
 This deploys the current repository state under `/opt/pve-dcv-integration` and refreshes packaged artifacts there for admin-side distribution.
+The resulting host-local USB writer endpoint is:
+
+```text
+https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh
+```
 
 Install only the Proxmox UI integration on a host:
 

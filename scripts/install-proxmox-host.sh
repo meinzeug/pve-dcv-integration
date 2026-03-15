@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTALL_DIR="${INSTALL_DIR:-/opt/pve-dcv-integration}"
+SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
+LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
+USB_INSTALLER_URL="${PVE_DCV_USB_INSTALLER_URL:-${DOWNLOADS_BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh}"
 
 ensure_root() {
   if [[ "${EUID}" -eq 0 ]]; then
@@ -10,7 +15,14 @@ ensure_root() {
   fi
 
   if command -v sudo >/dev/null 2>&1; then
-    exec sudo INSTALL_DIR="$INSTALL_DIR" "$0" "$@"
+    exec sudo \
+      INSTALL_DIR="$INSTALL_DIR" \
+      PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \
+      PVE_DCV_PROXY_LISTEN_PORT="$LISTEN_PORT" \
+      PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
+      PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
+      PVE_DCV_USB_INSTALLER_URL="$USB_INSTALLER_URL" \
+      "$0" "$@"
   fi
 
   echo "This installer must run as root or use sudo." >&2
@@ -79,13 +91,24 @@ esac
 install -d -m 0755 "$INSTALL_DIR"
 rsync -a --delete \
   --exclude '.git' \
+  --exclude '.build' \
   --exclude 'dist' \
   "$ROOT_DIR/" "$INSTALL_DIR/"
 
 "$INSTALL_DIR/scripts/package.sh"
+"$INSTALL_DIR/scripts/prepare-host-downloads.sh"
 
 if [[ -d /usr/share/pve-manager/js ]]; then
+  PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \
+  PVE_DCV_PROXY_LISTEN_PORT="$LISTEN_PORT" \
+  PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
+  PVE_DCV_USB_INSTALLER_URL="$USB_INSTALLER_URL" \
   "$INSTALL_DIR/scripts/install-proxmox-ui-integration.sh"
+
+  PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \
+  PVE_DCV_PROXY_LISTEN_PORT="$LISTEN_PORT" \
+  PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
+  PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
   "$INSTALL_DIR/scripts/install-proxmox-dcv-proxy.sh"
 fi
 

@@ -9,6 +9,8 @@ BACKEND_HOST="${PVE_DCV_PROXY_BACKEND_HOST:-}"
 BACKEND_PORT="${PVE_DCV_PROXY_BACKEND_PORT:-8443}"
 BACKEND_VMID="${PVE_DCV_PROXY_VMID:-}"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
 CERT_FILE="${PVE_DCV_PROXY_CERT_FILE:-/etc/pve/local/pveproxy-ssl.pem}"
 KEY_FILE="${PVE_DCV_PROXY_KEY_FILE:-/etc/pve/local/pveproxy-ssl.key}"
 NGINX_SITE="/etc/nginx/sites-available/pve-dcv-integration-dcv-proxy.conf"
@@ -27,6 +29,8 @@ ensure_root() {
       PVE_DCV_PROXY_BACKEND_PORT="$BACKEND_PORT" \
       PVE_DCV_PROXY_VMID="$BACKEND_VMID" \
       PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \
+      PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
+      PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
       PVE_DCV_PROXY_CERT_FILE="$CERT_FILE" \
       PVE_DCV_PROXY_KEY_FILE="$KEY_FILE" \
       "$0" "$@"
@@ -105,6 +109,8 @@ load_env_file() {
   BACKEND_PORT="${PVE_DCV_PROXY_BACKEND_PORT:-${BACKEND_PORT}}"
   BACKEND_VMID="${PVE_DCV_PROXY_VMID:-${BACKEND_VMID}}"
   SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-${SERVER_NAME}}"
+  DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-${DOWNLOADS_PATH}}"
+  DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-${DOWNLOADS_BASE_URL}}"
   CERT_FILE="${PVE_DCV_PROXY_CERT_FILE:-${CERT_FILE}}"
   KEY_FILE="${PVE_DCV_PROXY_KEY_FILE:-${KEY_FILE}}"
 }
@@ -230,6 +236,8 @@ PVE_DCV_PROXY_BACKEND_HOST="$BACKEND_HOST"
 PVE_DCV_PROXY_BACKEND_PORT="$BACKEND_PORT"
 PVE_DCV_PROXY_VMID="$BACKEND_VMID"
 PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME"
+PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH"
+PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL"
 PVE_DCV_PROXY_CERT_FILE="$CERT_FILE"
 PVE_DCV_PROXY_KEY_FILE="$KEY_FILE"
 EOF
@@ -278,6 +286,24 @@ server {
         add_header Cache-Control "no-store";
     }
 
+    location = ${DOWNLOADS_PATH} {
+        return 302 ${DOWNLOADS_PATH}/;
+    }
+
+    location = ${DOWNLOADS_PATH}/ {
+        alias ${ROOT_DIR}/dist/;
+        add_header Cache-Control "no-store";
+        autoindex on;
+        types {
+            application/x-sh sh;
+            text/plain txt;
+        }
+    }
+
+EOF
+
+  if [[ -n "$BACKEND_HOST" ]]; then
+    cat >> "$NGINX_SITE" <<EOF
     location / {
         proxy_pass https://${BACKEND_HOST}:${BACKEND_PORT};
         proxy_http_version 1.1;
@@ -297,7 +323,23 @@ server {
     }
 }
 EOF
+    return 0
+  fi
 
+  cat >> "$NGINX_SITE" <<EOF
+    location = / {
+        default_type text/html;
+        return 200 '<!doctype html><html><head><meta charset="utf-8"><title>PVE DCV Integration</title></head><body><h1>PVE DCV Integration</h1><p>Host-local downloads are available under <a href="${DOWNLOADS_PATH}/">${DOWNLOADS_PATH}/</a>.</p></body></html>';
+    }
+
+    location / {
+        return 404;
+    }
+}
+EOF
+}
+
+link_nginx_config() {
   ln -sfn "$NGINX_SITE" "$NGINX_ENABLED"
   if [[ -f /etc/nginx/sites-enabled/default ]]; then
     rm -f /etc/nginx/sites-enabled/default
@@ -318,16 +360,20 @@ ensure_dependencies
 }
 
 if [[ -z "$BACKEND_HOST" ]]; then
-  auto_detect_backend || {
-    log "No DCV backend detected. Skipping DCV proxy installation."
-    exit 0
-  }
+  if ! auto_detect_backend; then
+    log "No DCV backend detected. Configuring downloads-only HTTPS endpoint on https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}/."
+  fi
 fi
 
 write_env_file
 cleanup_legacy_port_forward
 write_nginx_config
+link_nginx_config
 nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
-log "Configured DCV TLS proxy on https://${SERVER_NAME}:${LISTEN_PORT}/ -> https://${BACKEND_HOST}:${BACKEND_PORT}/"
+if [[ -n "$BACKEND_HOST" ]]; then
+  log "Configured DCV TLS proxy on https://${SERVER_NAME}:${LISTEN_PORT}/ -> https://${BACKEND_HOST}:${BACKEND_PORT}/"
+else
+  log "Configured host-local HTTPS downloads on ${DOWNLOADS_BASE_URL%/}/"
+fi

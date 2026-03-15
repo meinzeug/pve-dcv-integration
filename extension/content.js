@@ -5,8 +5,10 @@
   const BUTTON_MARKER = "data-pve-dcv-integration";
   const DEFAULT_TEMPLATE = "https://{ip}:8443/";
   const DEFAULT_METADATA_KEYS = ["dcv-url", "dcv-host", "dcv-ip", "dcv-user", "dcv-password", "dcv-auth-token", "dcv-session", "dcv-auto-submit"];
-  const DEFAULT_USB_INSTALLER_URL =
-    "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh";
+
+  function defaultUsbInstallerUrl() {
+    return `https://${window.location.hostname}:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh`;
+  }
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -132,7 +134,7 @@
           urlTemplate: DEFAULT_TEMPLATE,
           fallbackUrl: "",
           metadataKeys: DEFAULT_METADATA_KEYS.join(","),
-          usbInstallerUrl: DEFAULT_USB_INSTALLER_URL
+          usbInstallerUrl: defaultUsbInstallerUrl()
         },
         (data) => resolve(data)
       );
@@ -324,7 +326,7 @@
 
   async function downloadUsbInstaller() {
     const options = await getOptions();
-    const url = String(options.usbInstallerUrl || DEFAULT_USB_INSTALLER_URL).trim();
+    const url = String(options.usbInstallerUrl || defaultUsbInstallerUrl()).trim();
     if (!url) {
       alert("USB Installer URL ist nicht konfiguriert.");
       return;

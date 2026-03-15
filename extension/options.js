@@ -1,7 +1,9 @@
 const DEFAULT_TEMPLATE = "https://{ip}:8443/";
 const DEFAULT_METADATA_KEYS = "dcv-url,dcv-host,dcv-ip,dcv-user,dcv-password,dcv-auth-token,dcv-session,dcv-auto-submit";
-const DEFAULT_USB_INSTALLER_URL =
-  "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh";
+
+function defaultUsbInstallerUrl() {
+  return `https://${window.location.hostname}:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh`;
+}
 
 function loadOptions() {
   chrome.storage.sync.get(
@@ -9,14 +11,14 @@ function loadOptions() {
       urlTemplate: DEFAULT_TEMPLATE,
       fallbackUrl: "",
       metadataKeys: DEFAULT_METADATA_KEYS,
-      usbInstallerUrl: DEFAULT_USB_INSTALLER_URL
+      usbInstallerUrl: defaultUsbInstallerUrl()
     },
     (data) => {
       document.getElementById("urlTemplate").value = data.urlTemplate || DEFAULT_TEMPLATE;
       document.getElementById("fallbackUrl").value = data.fallbackUrl || "";
       document.getElementById("metadataKeys").value = data.metadataKeys || DEFAULT_METADATA_KEYS;
       document.getElementById("usbInstallerUrl").value =
-        data.usbInstallerUrl || DEFAULT_USB_INSTALLER_URL;
+        data.usbInstallerUrl || defaultUsbInstallerUrl();
     }
   );
 }
@@ -26,7 +28,7 @@ function saveOptions() {
   const fallbackUrl = document.getElementById("fallbackUrl").value.trim();
   const metadataKeys = document.getElementById("metadataKeys").value.trim() || DEFAULT_METADATA_KEYS;
   const usbInstallerUrl =
-    document.getElementById("usbInstallerUrl").value.trim() || DEFAULT_USB_INSTALLER_URL;
+    document.getElementById("usbInstallerUrl").value.trim() || defaultUsbInstallerUrl();
 
   chrome.storage.sync.set({ urlTemplate, fallbackUrl, metadataKeys, usbInstallerUrl }, () => {
     const status = document.getElementById("status");

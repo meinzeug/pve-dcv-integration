@@ -32,7 +32,7 @@ The standalone writer script can be started as a normal user:
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh
 ```
 
-It escalates to `sudo` only for partitioning and writing the selected USB device. If it is executed outside the repository, it can bootstrap the payload bundle from the latest GitHub release.
+It escalates to `sudo` only for partitioning and writing the selected USB device. If it is executed outside the repository, it should be the host-provided standalone script from `https://<proxmox-host>:8443/pve-dcv-downloads/`, which already knows the matching local payload URL.
 It can also show candidate targets up front:
 
 ```bash

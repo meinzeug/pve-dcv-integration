@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.4.6 - 2026-03-15
+
+- Reworked the USB distribution path so the large thin-client payload is served by each installed Proxmox host under `/pve-dcv-downloads/` instead of being expected from GitHub releases.
+- Added host-local download preparation that generates a Proxmox-hosted USB installer script with the correct local payload URL baked in.
+- Extended the Proxmox-side `nginx` setup to always publish hosted download artifacts on `https://<proxmox-host>:8443/pve-dcv-downloads/`, even when no DCV backend proxy is configured.
+- Added a Proxmox UI runtime config asset so the `USB Installer` toolbar button opens the host-local installer endpoint by default.
+
 ## v0.4.5 - 2026-03-15
 
 - Fixed DCV launch URL generation so `dcv-url` in VM metadata always overrides the internal guest IP template path.

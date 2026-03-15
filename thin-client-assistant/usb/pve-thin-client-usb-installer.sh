@@ -9,7 +9,7 @@ USB_LABEL="${USB_LABEL:-PVETHIN}"
 TARGET_DEVICE="${TARGET_DEVICE:-}"
 ASSUME_YES="0"
 LIST_DEVICES="0"
-RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-payload-latest.tar.gz}"
+RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-}"
 BOOTSTRAP_DIR=""
 
 usage() {
@@ -93,7 +93,13 @@ bootstrap_repo_root() {
   mkdir -p "$extracted"
   chmod 0755 "$BOOTSTRAP_DIR" "$extracted"
 
-  echo "Downloading thin-client payload bundle from GitHub release..."
+  [[ -n "$RELEASE_PAYLOAD_URL" ]] || {
+    echo "Standalone mode requires RELEASE_PAYLOAD_URL to point at a hosted pve-thin-client-usb-payload tarball." >&2
+    echo "Use the host-provided installer from https://<proxmox-host>:8443/pve-dcv-downloads/ or export RELEASE_PAYLOAD_URL manually." >&2
+    exit 1
+  }
+
+  echo "Downloading thin-client payload bundle from $RELEASE_PAYLOAD_URL ..."
   curl -fsSL "$RELEASE_PAYLOAD_URL" -o "$tarball"
   tar -xzf "$tarball" -C "$extracted"
   REPO_ROOT="$extracted"
