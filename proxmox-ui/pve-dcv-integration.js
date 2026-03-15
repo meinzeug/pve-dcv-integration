@@ -4,7 +4,7 @@
   var DEFAULTS = {
     urlTemplate: "https://{ip}:8443/",
     fallbackUrl: "",
-    metadataKeys: ["dcv-url", "dcv-host", "dcv-ip"],
+    metadataKeys: ["dcv-url", "dcv-host", "dcv-ip", "dcv-user", "dcv-password", "dcv-auth-token", "dcv-session", "dcv-auto-submit"],
     usbInstallerUrl: "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh"
   };
 
@@ -35,7 +35,16 @@
 
   function parseDescriptionMeta(description, metadataKeys) {
     var text = String(description || "");
-    var result = { dcvUrl: null, dcvHost: null, dcvIp: null };
+    var result = {
+      dcvUrl: null,
+      dcvHost: null,
+      dcvIp: null,
+      dcvUser: null,
+      dcvPassword: null,
+      dcvAuthToken: null,
+      dcvSession: null,
+      dcvAutoSubmit: true
+    };
     var keys = Array.from(new Set(DEFAULTS.metadataKeys.concat(metadataKeys || [])));
 
     keys.forEach(function(key) {
@@ -45,9 +54,40 @@
       if (key === "dcv-url" && /^https?:\/\//i.test(value)) result.dcvUrl = value;
       if (key === "dcv-host" && !result.dcvHost) result.dcvHost = value;
       if (key === "dcv-ip" && !result.dcvIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(value)) result.dcvIp = value;
+      if (key === "dcv-user" && !result.dcvUser) result.dcvUser = value;
+      if (key === "dcv-password" && !result.dcvPassword) result.dcvPassword = value;
+      if (key === "dcv-auth-token" && !result.dcvAuthToken) result.dcvAuthToken = value;
+      if (key === "dcv-session" && !result.dcvSession) result.dcvSession = value;
+      if (key === "dcv-auto-submit") result.dcvAutoSubmit = !/^(0|false|no)$/i.test(value);
     });
 
     return result;
+  }
+
+  function applyDcvLaunchMetadata(rawUrl, meta) {
+    var url;
+
+    try {
+      url = new URL(rawUrl, window.location.origin);
+    } catch (error) {
+      return rawUrl;
+    }
+
+    if (meta.dcvAuthToken && !url.searchParams.get("authToken")) {
+      url.searchParams.set("authToken", meta.dcvAuthToken);
+    }
+
+    if (meta.dcvSession && !url.hash) {
+      url.hash = meta.dcvSession;
+    }
+
+    if (!meta.dcvAuthToken) {
+      if (meta.dcvUser) url.searchParams.set("pveDcvUser", meta.dcvUser);
+      if (meta.dcvPassword) url.searchParams.set("pveDcvPassword", meta.dcvPassword);
+      url.searchParams.set("pveDcvAutoSubmit", meta.dcvAutoSubmit ? "1" : "0");
+    }
+
+    return url.toString();
   }
 
   function fillTemplate(template, values) {
@@ -62,9 +102,16 @@
     var config = getConfig();
     var host = window.location.hostname;
     var ip = null;
-    var dcvUrl = null;
-    var dcvHost = null;
-    var dcvIp = null;
+    var meta = {
+      dcvUrl: null,
+      dcvHost: null,
+      dcvIp: null,
+      dcvUser: null,
+      dcvPassword: null,
+      dcvAuthToken: null,
+      dcvSession: null,
+      dcvAutoSubmit: true
+    };
 
     function loadConfig() {
       return fetch("/api2/json/nodes/" + encodeURIComponent(ctx.node) + "/qemu/" + ctx.vmid + "/config", {
@@ -74,10 +121,7 @@
           return res.ok ? res.json() : { data: {} };
         })
         .then(function(payload) {
-          var meta = parseDescriptionMeta(payload.data && payload.data.description, config.metadataKeys);
-          dcvUrl = meta.dcvUrl;
-          dcvHost = meta.dcvHost;
-          dcvIp = meta.dcvIp;
+          meta = parseDescriptionMeta(payload.data && payload.data.description, config.metadataKeys);
         });
     }
 
@@ -102,18 +146,19 @@
     return loadAgent()
       .then(loadConfig)
       .then(function() {
-        if (dcvUrl) return dcvUrl;
-        if (!ip && dcvIp) ip = dcvIp;
-        if (!ip && dcvHost) ip = dcvHost;
+        var baseUrl = meta.dcvUrl;
+        if (!ip && meta.dcvIp) ip = meta.dcvIp;
+        if (!ip && meta.dcvHost) ip = meta.dcvHost;
         if (ip) {
-          return fillTemplate(config.urlTemplate, {
+          baseUrl = fillTemplate(config.urlTemplate, {
             ip: ip,
             node: ctx.node,
             vmid: ctx.vmid,
             host: host
           });
         }
-        return config.fallbackUrl || null;
+        if (!baseUrl) baseUrl = config.fallbackUrl || null;
+        return baseUrl ? applyDcvLaunchMetadata(baseUrl, meta) : null;
       });
   }
 

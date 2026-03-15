@@ -47,6 +47,7 @@ The installer can either:
 - use an explicit `PVE_DCV_PROXY_BACKEND_HOST` and `PVE_DCV_PROXY_BACKEND_PORT`
 
 When enabled, the host installer also removes old `iptables` DNAT rules on the same DCV port so that local TLS termination can bind cleanly.
+The proxied DCV page can additionally inject a small auto-login helper that consumes `pveDcvUser` and `pveDcvPassword` query parameters generated from VM metadata.
 
 ## Thin-client assistant architecture
 

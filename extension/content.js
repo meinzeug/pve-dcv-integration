@@ -4,7 +4,7 @@
   const USB_BUTTON_LABEL = "USB Installer";
   const BUTTON_MARKER = "data-pve-dcv-integration";
   const DEFAULT_TEMPLATE = "https://{ip}:8443/";
-  const DEFAULT_METADATA_KEYS = ["dcv-url", "dcv-host", "dcv-ip"];
+  const DEFAULT_METADATA_KEYS = ["dcv-url", "dcv-host", "dcv-ip", "dcv-user", "dcv-password", "dcv-auth-token", "dcv-session", "dcv-auto-submit"];
   const DEFAULT_USB_INSTALLER_URL =
     "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh";
 
@@ -20,6 +20,77 @@
 
   function isVmView() {
     return /qemu\/(\d+)/i.test(decodeHash());
+  }
+
+  function setInputValue(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+    if (setter) {
+      setter.call(input, value);
+    } else {
+      input.value = value;
+    }
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function cleanupAutoLoginParams() {
+    const url = new URL(window.location.href);
+    let changed = false;
+
+    ["pveDcvUser", "pveDcvPassword", "pveDcvAutoSubmit"].forEach((key) => {
+      if (!url.searchParams.has(key)) return;
+      url.searchParams.delete(key);
+      changed = true;
+    });
+
+    if (changed) {
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  }
+
+  function startDcvAutoLogin() {
+    const url = new URL(window.location.href);
+    const username = url.searchParams.get("pveDcvUser") || "";
+    const password = url.searchParams.get("pveDcvPassword") || "";
+    const autoSubmit = url.searchParams.get("pveDcvAutoSubmit") !== "0";
+
+    if (!username && !password) return;
+
+    cleanupAutoLoginParams();
+
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+
+      const inputs = Array.from(document.querySelectorAll("input"));
+      const userInput =
+        inputs.find((input) => /user/i.test(String(input.name || input.id || input.placeholder || ""))) ||
+        inputs.find((input) => input.type === "text" || input.type === "email" || !input.type);
+      const passwordInput = inputs.find((input) => input.type === "password");
+
+      if (userInput && username && userInput.value !== username) {
+        setInputValue(userInput, username);
+      }
+
+      if (passwordInput && password && passwordInput.value !== password) {
+        setInputValue(passwordInput, password);
+      }
+
+      if (autoSubmit && userInput && passwordInput && (!username || userInput.value === username) && (!password || passwordInput.value === password)) {
+        const button = Array.from(document.querySelectorAll("button, input[type='submit'], [role='button']")).find((node) =>
+          /sign in|login|anmelden/i.test(String(node.textContent || node.value || ""))
+        );
+        if (button) {
+          button.click();
+          window.clearInterval(timer);
+          return;
+        }
+      }
+
+      if (attempts >= 60) {
+        window.clearInterval(timer);
+      }
+    }, 500);
   }
 
   async function parseVmContext() {
@@ -98,7 +169,16 @@
   }
 
   function parseDescriptionMeta(description, metadataKeys) {
-    const output = { dcvUrl: null, dcvHost: null, dcvIp: null };
+    const output = {
+      dcvUrl: null,
+      dcvHost: null,
+      dcvIp: null,
+      dcvUser: null,
+      dcvPassword: null,
+      dcvAuthToken: null,
+      dcvSession: null,
+      dcvAutoSubmit: true
+    };
     const text = String(description || "");
     const keys = Array.from(
       new Set(
@@ -115,6 +195,11 @@
       if (key === "dcv-url" && /^https?:\/\//i.test(value)) output.dcvUrl = value;
       if (key === "dcv-host" && !output.dcvHost) output.dcvHost = value;
       if (key === "dcv-ip" && !output.dcvIp) output.dcvIp = pickCandidateIp(value);
+      if (key === "dcv-user" && !output.dcvUser) output.dcvUser = value;
+      if (key === "dcv-password" && !output.dcvPassword) output.dcvPassword = value;
+      if (key === "dcv-auth-token" && !output.dcvAuthToken) output.dcvAuthToken = value;
+      if (key === "dcv-session" && !output.dcvSession) output.dcvSession = value;
+      if (key === "dcv-auto-submit") output.dcvAutoSubmit = !/^(0|false|no)$/i.test(value);
     }
 
     return output;
@@ -138,6 +223,32 @@
       .replaceAll("{host}", values.host || "");
   }
 
+  function applyDcvLaunchMetadata(rawUrl, meta) {
+    let url;
+
+    try {
+      url = new URL(rawUrl, window.location.origin);
+    } catch {
+      return rawUrl;
+    }
+
+    if (meta.dcvAuthToken && !url.searchParams.get("authToken")) {
+      url.searchParams.set("authToken", meta.dcvAuthToken);
+    }
+
+    if (meta.dcvSession && !url.hash) {
+      url.hash = meta.dcvSession;
+    }
+
+    if (!meta.dcvAuthToken) {
+      if (meta.dcvUser) url.searchParams.set("pveDcvUser", meta.dcvUser);
+      if (meta.dcvPassword) url.searchParams.set("pveDcvPassword", meta.dcvPassword);
+      url.searchParams.set("pveDcvAutoSubmit", meta.dcvAutoSubmit ? "1" : "0");
+    }
+
+    return url.toString();
+  }
+
   async function buildLaunchUrl(ctx) {
     const options = await getOptions();
     const host = window.location.hostname;
@@ -147,9 +258,16 @@
       .filter(Boolean);
 
     let ip = null;
-    let dcvUrl = null;
-    let dcvHost = null;
-    let dcvIp = null;
+    let meta = {
+      dcvUrl: null,
+      dcvHost: null,
+      dcvIp: null,
+      dcvUser: null,
+      dcvPassword: null,
+      dcvAuthToken: null,
+      dcvSession: null,
+      dcvAutoSubmit: true
+    };
 
     try {
       ip = await getVmIpViaAgent(ctx.node, ctx.vmid);
@@ -159,32 +277,30 @@
 
     try {
       const cfg = await getVmConfig(ctx.node, ctx.vmid);
-      const meta = parseDescriptionMeta(cfg.description || "", metadataKeys);
-      dcvUrl = meta.dcvUrl;
-      dcvHost = meta.dcvHost;
-      dcvIp = meta.dcvIp;
+      meta = parseDescriptionMeta(cfg.description || "", metadataKeys);
     } catch {
       // keep fallbacks empty
     }
 
-    if (dcvUrl) return dcvUrl;
-    if (!ip && dcvIp) ip = dcvIp;
-    if (!ip && dcvHost) ip = dcvHost;
+    let baseUrl = meta.dcvUrl;
+    if (!ip && meta.dcvIp) ip = meta.dcvIp;
+    if (!ip && meta.dcvHost) ip = meta.dcvHost;
 
     if (ip) {
-      const url = fillTemplate(options.urlTemplate || DEFAULT_TEMPLATE, {
+      baseUrl = fillTemplate(options.urlTemplate || DEFAULT_TEMPLATE, {
         ip,
         node: ctx.node,
         vmid: ctx.vmid,
         host
       });
-      if (url.startsWith("http://") || url.startsWith("https://")) {
-        return url;
-      }
     }
 
-    if (options.fallbackUrl) return options.fallbackUrl;
-    return null;
+    if (!baseUrl && options.fallbackUrl) {
+      baseUrl = options.fallbackUrl;
+    }
+
+    if (!baseUrl) return null;
+    return applyDcvLaunchMetadata(baseUrl, meta);
   }
 
   async function openDcv() {
@@ -314,6 +430,8 @@
   }
 
   async function boot() {
+    startDcvAutoLogin();
+
     for (let i = 0; i < 12; i += 1) {
       ensureToolbarButtons();
       ensureDcvMenuItem();

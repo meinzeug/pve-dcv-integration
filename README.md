@@ -22,6 +22,7 @@ The project is intentionally independent from Proxmox core. It does not patch Pr
 - Installs a server-side JavaScript asset into `/usr/share/pve-manager/js/`.
 - Patches `index.html.tpl` with a backup and restarts `pveproxy`.
 - Can terminate DCV TLS on the Proxmox host with the existing Proxmox certificate and proxy traffic to a backend DCV VM.
+- Can inject a lightweight DCV web auto-login helper on the proxied DCV page when VM metadata provides per-VM credentials.
 
 ### 2. Linux thin-client assistant
 
@@ -58,6 +59,10 @@ If guest-agent IP lookup fails, the extension parses VM description metadata suc
 - `dcv-url: https://dcv.example.local:8443/`
 - `dcv-host: dcv.example.local`
 - `dcv-ip: 10.20.30.40`
+- `dcv-user: operator`
+- `dcv-password: secret`
+- `dcv-auth-token: short-lived-token`
+- `dcv-session: console`
 
 ## Thin-client assistant behavior
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.3 - 2026-03-15
+
+- Added DCV metadata support for `dcv-user`, `dcv-password`, `dcv-auth-token`, `dcv-session` and `dcv-auto-submit`.
+- Added browser-side and proxied-page DCV auto-login helpers so VM-specific credentials can be prefilled and submitted automatically when opening DCV from Proxmox.
+- Added host-side DCV proxy injection of `pve-dcv-autologin.js` so the server-installed Proxmox integration can auto-fill the DCV web login page without a browser extension.
+
 ## v0.4.2 - 2026-03-15
 
 - Added a Proxmox-host DCV TLS proxy installer that can publish a backend DCV service on `https://<proxmox-host>:8443/` with the already valid Proxmox certificate.

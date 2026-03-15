@@ -33,6 +33,7 @@ Recommended hardening:
 - pin browser policy or kiosk flags for noVNC deployments
 - manage package updates through your standard OS patching process
 - when exposing DCV through the bundled Proxmox host proxy, reuse a valid Proxmox certificate and do not publish the backend VM's self-signed certificate directly
+- if using `dcv-user` and `dcv-password` metadata for browser auto-login, treat VM descriptions and browser history as sensitive because credentials are embedded in the launch URL before the DCV page strips them from the address bar
 
 ## Known non-goals in this baseline
 

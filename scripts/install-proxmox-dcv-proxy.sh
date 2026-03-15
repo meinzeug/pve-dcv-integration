@@ -273,9 +273,15 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_timeout 1d;
 
+    location = /pve-dcv-autologin.js {
+        alias ${ROOT_DIR}/proxmox-ui/pve-dcv-autologin.js;
+        add_header Cache-Control "no-store";
+    }
+
     location / {
         proxy_pass https://${BACKEND_HOST}:${BACKEND_PORT};
         proxy_http_version 1.1;
+        proxy_set_header Accept-Encoding "";
         proxy_ssl_server_name on;
         proxy_ssl_verify off;
         proxy_set_header Host \$host;
@@ -286,6 +292,8 @@ server {
         proxy_buffering off;
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
+        sub_filter_once on;
+        sub_filter '</body>' '<script src="/pve-dcv-autologin.js"></script></body>';
     }
 }
 EOF

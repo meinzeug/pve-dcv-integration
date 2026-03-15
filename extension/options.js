@@ -1,5 +1,5 @@
 const DEFAULT_TEMPLATE = "https://{ip}:8443/";
-const DEFAULT_METADATA_KEYS = "dcv-url,dcv-host,dcv-ip";
+const DEFAULT_METADATA_KEYS = "dcv-url,dcv-host,dcv-ip,dcv-user,dcv-password,dcv-auth-token,dcv-session,dcv-auto-submit";
 const DEFAULT_USB_INSTALLER_URL =
   "https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-thin-client-usb-installer-latest.sh";
 
