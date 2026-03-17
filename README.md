@@ -1,160 +1,178 @@
 # pve-dcv-integration
 
-`pve-dcv-integration` is an external, open-source enhancement layer for Proxmox VE. It adds a visible DCV action to VM views in the Proxmox web UI and ships a Linux thin-client assistant that can turn a local device into a dedicated Moonlight, SPICE, noVNC or NICE DCV endpoint.
+External Proxmox VE integration for hosted thin-client delivery, VM-aware USB installers, and low-latency guest access with `MOONLIGHT`, `SPICE`, `noVNC`, and `DCV`.
 
-The project is intentionally independent from Proxmox core. It does not patch Proxmox packages and can be versioned, deployed and packaged on its own.
+The current recommended path is:
 
-## Product scope
+- Proxmox host installs the integration once
+- a target VM is provisioned for Sunshine
+- the Proxmox UI exposes a per-VM USB installer
+- the thin client boots from USB and only asks for:
+  - streaming mode
+  - target disk
 
-### 1. Proxmox browser extension
+Everything else can be preseeded from VM metadata and host-generated artifacts.
 
-- Adds a visible `DCV` action on QEMU VM pages.
-- Detects `node` and `vmid` from the current Proxmox route.
-- Resolves guest IPs through the Proxmox API and QEMU guest agent where available.
-- Supports metadata fallbacks from the VM description if no guest IP is available.
-- Opens either a generated NICE DCV URL or a metadata-provided direct URL.
-- Hooks the existing Proxmox `Konsole` dropdown and appends a `DCV` menu item next to `noVNC` and `SPICE`.
-- Adds a `USB Installer` toolbar button beside the console menu for downloading the thin-client USB writer script.
-- Points the `USB Installer` button at a host-local download endpoint on the Proxmox server so large payload bundles are not fetched from GitHub.
+## Quick Links
 
-### 1b. Proxmox host UI integration
+- Latest release: [GitHub Releases](https://github.com/meinzeug/pve-dcv-integration/releases/latest)
+- Host install: [`scripts/install-proxmox-host.sh`](./scripts/install-proxmox-host.sh)
+- Sunshine guest provisioning: [`scripts/configure-sunshine-guest.sh`](./scripts/configure-sunshine-guest.sh)
+- Thin-client docs: [`docs/thin-client-installation.md`](./docs/thin-client-installation.md)
+- Architecture docs: [`docs/architecture.md`](./docs/architecture.md)
 
-- Can deploy the same UI behavior directly on a Proxmox host without requiring a browser extension.
-- Installs a server-side JavaScript asset into `/usr/share/pve-manager/js/`.
-- Installs a small runtime config asset that points the UI to host-local thin-client download URLs.
-- Patches `index.html.tpl` with a backup and restarts `pveproxy`.
-- Can terminate DCV TLS on the Proxmox host with the existing Proxmox certificate and proxy traffic to a backend DCV VM.
-- Can inject a lightweight DCV web auto-login helper on the proxied DCV page when VM metadata provides per-VM credentials.
-- Publishes packaged thin-client artifacts on `https://<proxmox-host>:8443/pve-dcv-downloads/`.
-- Installs a recurring host refresh timer so those hosted artifacts can be rebuilt automatically.
-- Publishes richer host status metadata including artifact sizes and SHA256 checksums for operational verification.
+## What It Does
 
-### 2. Linux thin-client assistant
+`pve-dcv-integration` adds three deployable layers around Proxmox VE:
 
-- Provides an installer-oriented base for local deployment onto a Linux-backed thin client.
-- Includes an interactive setup menu with four target modes: `MOONLIGHT`, `SPICE`, `noVNC`, `DCV`.
-- Stores the target runtime configuration in a dedicated config file.
-- Installs runtime launchers, XDG autostart integration and systemd preparation logic.
-- Separates installer logic, runtime logic, templates and system assets.
-- Adds a bootable USB/live installer path inspired by the existing ThinOverNet provisioning flow.
+| Layer | Purpose | Result |
+| --- | --- | --- |
+| Proxmox UI integration | Adds VM actions directly in Proxmox | `DCV`, `USB Installer`, launch helpers, downloads status |
+| Host-side artifact publishing | Builds and serves VM-aware installers | `https://<host>:8443/pve-dcv-downloads/...` |
+| Thin-client runtime | Turns a device into a dedicated session endpoint | `MOONLIGHT`, `SPICE`, `NOVNC`, `DCV` |
 
-## Repository layout
+It stays independent from Proxmox core:
 
-- `extension/` Chromium extension for the Proxmox DCV action
-- `thin-client-assistant/` installer, runtime, templates, systemd unit and sample configs
-- `docs/` architecture, security and installation documentation
-- `scripts/` release packaging helpers
-- `proxmox-ui/` server-side Proxmox UI integration asset
-- `proxmox-host/` host-side service templates
+- no fork of Proxmox packages
+- no permanent patch set inside upstream packages
+- reinstall/reapply logic survives `pve-manager` updates
 
-## Browser extension behavior
+## Recommended 2026 Deployment
 
-The extension supports these placeholders in the configurable DCV URL template:
+For a CPU-only Proxmox host, the preferred low-latency path is:
 
-- `{ip}` guest IPv4 resolved through guest agent or metadata
-- `{node}` current Proxmox node
-- `{vmid}` current VM ID
-- `{host}` browser host of the current Proxmox session
+- Sunshine inside the guest VM
+- Moonlight on the thin client
+- `H.264`
+- `1080p60`
+- wired Ethernet
+- lightweight guest desktop with Xfce + LightDM
+- compositor disabled
 
-Default template:
+That is exactly what `scripts/configure-sunshine-guest.sh` now prepares.
 
-`https://{ip}:8443/`
+## System Overview
 
-If guest-agent IP lookup fails, the extension parses VM description metadata such as:
+```mermaid
+flowchart LR
+    Admin["Operator in Proxmox UI"]
+    PVE["Proxmox Host\npve-dcv-integration"]
+    VM["Target VM\nSunshine or DCV metadata"]
+    USB["VM-specific USB installer"]
+    Client["Thin Client\nbooted from USB or local disk"]
 
-- `dcv-url: https://dcv.example.local:8443/`
-- `dcv-host: dcv.example.local`
-- `dcv-ip: 10.20.30.40`
-- `dcv-user: operator`
-- `dcv-password: secret`
-- `dcv-auth-token: short-lived-token`
-- `dcv-session: console`
-
-If `dcv-url` is present, it takes precedence over any guest-agent IP so internet-facing Proxmox deployments can force the public DCV proxy URL instead of an internal VM address.
-
-For the USB workflow, the preferred operator path is now host-local and VM-specific:
-
-- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-<vmid>.sh`
-- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh`
-- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-payload-latest.tar.gz`
-- `https://<proxmox-host>:8443/pve-dcv-downloads/pve-dcv-downloads-status.json`
-- `https://<proxmox-host>:8443/pve-dcv-downloads/SHA256SUMS`
-
-The VM-specific launcher is the primary path from the Proxmox UI. It embeds that VM's URLs and credentials into the USB image so the on-stick installer only needs the streaming mode and the target disk. That preset can now carry Moonlight plus Sunshine pairing data as well. The generic host launcher remains available as a fallback.
-On current media builds, both the bootloader and the live installer UI are also skinned with bundled JPEG artwork from Unsplash, so the stick no longer boots into a plain text-first installer experience.
-
-## Thin-client assistant behavior
-
-The thin-client assistant installs a first real implementation baseline:
-
-- `installer/install.sh` performs installation and asset deployment
-- `installer/setup-menu.sh` collects mode, connection, network and credential values
-- `installer/write-config.sh` writes runtime, network and credential state
-- `runtime/launch-session.sh` starts the chosen client mode
-- `runtime/prepare-runtime.sh` validates runtime prerequisites on boot
-- `runtime/apply-network-config.sh` applies persisted hostname and systemd-networkd settings during runtime boot
-- `systemd/pve-thin-client-prepare.service` prepares the environment before graphical login
-- `templates/` provides config, autostart and environment file templates
-- `usb/pve-thin-client-usb-installer.sh` writes a bootable BIOS+UEFI installer USB, can list/select target devices interactively and self-escalates to `sudo`
-- `usb/pve-thin-client-live-menu.sh` provides the USB-side setup menu
-- `usb/pve-thin-client-local-installer.sh` installs a local bootable thin-client disk from the live environment
-- `live-build/` defines the live installer image that is written to USB
-
-Runtime modes:
-
-- `MOONLIGHT` launches Moonlight against a Sunshine target, can auto-pair through the Sunshine API and defaults to H.264 at `1080p60`
-- `SPICE` launches `remote-viewer`, optionally with fresh Proxmox API tickets
-- `noVNC` launches Chromium in kiosk mode against a configured URL
-- `DCV` launches the native `dcvviewer` client with generated connection files when credentials are provided
-
-Recommended low-latency topology for CPU-only Proxmox hosts:
-
-- provision the guest with `scripts/configure-sunshine-guest.sh`
-- use `MOONLIGHT` as the default USB preset mode
-- keep the guest on Xfce/LightDM with compositor overhead disabled
-- run the thin client over wired Ethernet
-
-USB/live installer highlights:
-
-- rootless launcher path with `sudo` escalation only for disk writes
-- interactive disk discovery with `--list-devices`
-- bootable GPT layout with both BIOS GRUB and EFI support
-- live installer menu that collects connection mode, network and credentials before local-disk installation
-- local-disk runtime that boots the live image from disk and re-applies the saved network profile on startup
-- host-local distribution model where the USB writer downloads its payload from the target Proxmox host
-
-## Installation and packaging
-
-Developer-loading the extension:
-
-1. Open `chrome://extensions` or `edge://extensions`
-2. Enable developer mode
-3. Choose `Load unpacked`
-4. Select `extension/`
-
-Build release artifacts:
-
-```bash
-cd ~/pve-dcv-integration
-./scripts/package.sh
+    Admin -->|"USB Installer button"| PVE
+    PVE -->|"generate preset + artifacts"| USB
+    USB -->|"write bootable stick"| Client
+    Client -->|"launch selected mode"| VM
+    PVE -->|"UI hooks + hosted downloads"| Admin
+    VM -->|"metadata, guest IP, Sunshine API"| PVE
 ```
 
-Artifacts are written to `dist/`:
+## End-to-End Flow
 
-- browser extension zip
-- thin-client assistant tarball
-- USB payload tarball with prebuilt live installer assets for host-side distribution
-- USB installer shell script
-- thin-client assistant `latest` tarball for host installation on arbitrary Proxmox systems
+```mermaid
+sequenceDiagram
+    participant Admin as Admin
+    participant PVE as Proxmox Host
+    participant VM as VM 100
+    participant Stick as USB Stick
+    participant TC as Thin Client
+
+    Admin->>PVE: Install integration on host
+    Admin->>VM: Provision Sunshine guest
+    VM-->>PVE: Store metadata in VM description
+    Admin->>PVE: Click "USB Installer" on VM page
+    PVE-->>Admin: Serve vm-100 installer script
+    Admin->>Stick: Run USB writer
+    Stick-->>Stick: Download payload + embed preset
+    TC->>Stick: Boot live installer
+    TC->>TC: Ask only for mode and target disk
+    TC->>VM: Pair and launch Moonlight stream
+```
+
+## Main Components
+
+### 1. Proxmox UI Integration
+
+The project can work in two UI modes:
+
+- browser extension from [`extension/`](./extension/)
+- host-installed UI integration from [`proxmox-ui/`](./proxmox-ui/)
+
+Operator-facing actions include:
+
+- `DCV`
+- `Copy DCV URL`
+- `DCV Info`
+- `USB Installer`
+- `Downloads Status`
+
+### 2. Host-Side Downloads
+
+The Proxmox host publishes locally generated artifacts under:
+
+```text
+https://<proxmox-host>:8443/pve-dcv-downloads/
+```
+
+Key outputs:
+
+- `pve-thin-client-usb-installer-vm-<vmid>.sh`
+- `pve-thin-client-usb-installer-host-latest.sh`
+- `pve-thin-client-usb-payload-latest.tar.gz`
+- `pve-dcv-downloads-status.json`
 - `SHA256SUMS`
 
-Validate the checkout:
+VM-specific installer scripts are generated from Proxmox VM config and description metadata.
 
-```bash
-./scripts/validate-project.sh
+### 3. Thin-Client Runtime
+
+The runtime lives in [`thin-client-assistant/`](./thin-client-assistant/) and supports:
+
+| Mode | Runtime | Typical use |
+| --- | --- | --- |
+| `MOONLIGHT` | Sunshine + Moonlight | preferred low-latency desktop path |
+| `SPICE` | `remote-viewer` | Proxmox console workflow |
+| `NOVNC` | Chromium kiosk | browser-only fallback |
+| `DCV` | `dcvviewer` / browser proxy | DCV environments |
+
+## Sunshine / Moonlight Path
+
+```mermaid
+flowchart TD
+    Meta["VM description metadata"]
+    Host["prepare-host-downloads.sh"]
+    Preset["Base64 preset embedded into VM installer"]
+    Writer["USB writer"]
+    Local["local installer"]
+    Runtime["launch-moonlight.sh"]
+    Sunshine["Sunshine API + Desktop app"]
+
+    Meta --> Host
+    Host --> Preset
+    Preset --> Writer
+    Writer --> Local
+    Local --> Runtime
+    Runtime -->|"pair via /api/pin"| Sunshine
+    Runtime -->|"stream Desktop at H.264 1080p60"| Sunshine
 ```
 
-Install the latest release on any Proxmox host:
+Current Sunshine defaults:
+
+- `encoder = software`
+- `sw_preset = superfast`
+- `sw_tune = zerolatency`
+- `hevc_mode = 0`
+- `av1_mode = 0`
+- Xfce + LightDM
+- compositor disabled
+
+## Quick Start
+
+### Install On A Proxmox Host
+
+From the latest release:
 
 ```bash
 tmpdir="$(mktemp -d)"
@@ -165,12 +183,15 @@ tar -xzf pve-dcv.tar.gz
 ./scripts/install-proxmox-host.sh
 ```
 
-This installs the project under `/opt/pve-dcv-integration`, rebuilds the packaged artifacts there and deploys the Proxmox UI integration if `/usr/share/pve-manager/` is present.
-It also prepares host-local thin-client download artifacts and publishes them on `https://<proxmox-host>:8443/pve-dcv-downloads/`.
-If a DCV backend can be identified, the same HTTPS endpoint also proxies `https://<proxmox-host>:8443/` to the backend DCV service using the same certificate as the Proxmox web UI.
-When the installer is run from a published release tarball, it now prefers the already published USB installer and payload artifacts from the matching GitHub release before falling back to a local live-build run.
+What this does:
 
-Prepare an Ubuntu guest VM for Sunshine + Moonlight:
+1. installs the project into `/opt/pve-dcv-integration`
+2. installs or reapplies the Proxmox UI hooks
+3. installs host refresh and reapply services
+4. publishes USB artifacts on `:8443`
+5. keeps the integration resilient across later Proxmox updates
+
+### Provision A Sunshine Guest
 
 ```bash
 ./scripts/configure-sunshine-guest.sh \
@@ -181,119 +202,142 @@ Prepare an Ubuntu guest VM for Sunshine + Moonlight:
   --sunshine-password 'choose-a-strong-password'
 ```
 
-That helper installs Xfce + LightDM, configures autologin, writes a Sunshine software-encoding profile pinned to H.264, disables Xfce compositing overhead and updates the VM description with the metadata consumed by the per-VM USB installer.
+This helper:
 
-To force the DCV proxy installation for a specific VM or backend:
+- installs Xfce and LightDM
+- switches autologin to the target user
+- configures Sunshine for software H.264 streaming
+- writes a desktop autostart entry
+- disables Xfce compositor overhead
+- updates the VM description with Moonlight/Sunshine metadata
 
-```bash
-PVE_DCV_PROXY_VMID=100 ./scripts/install-proxmox-host.sh
-```
+### Build A VM-Specific USB Installer
 
-or
+From the Proxmox UI, use the `USB Installer` action on the target VM.
 
-```bash
-PVE_DCV_PROXY_BACKEND_HOST=10.10.10.100 PVE_DCV_PROXY_BACKEND_PORT=8443 ./scripts/install-proxmox-host.sh
-```
-
-Install only the Proxmox UI integration from a release tarball:
-
-```bash
-tmpdir="$(mktemp -d)"
-cd "$tmpdir"
-curl -fsSLo pve-dcv.tar.gz \
-  https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
-tar -xzf pve-dcv.tar.gz
-./scripts/install-proxmox-ui-integration.sh
-```
-
-Build the live installer assets used by the USB writer:
-
-```bash
-cd ~/pve-dcv-integration
-./scripts/build-thin-client-installer.sh
-```
-
-Write a bootable installer stick as a normal user:
-
-```bash
-./thin-client-assistant/usb/pve-thin-client-usb-installer.sh
-```
-
-When the script runs from a full checkout, it can build or reuse local assets directly.
-When it runs as a standalone host-distributed script, it downloads the prebuilt payload from the Proxmox host that served it.
-
-List candidate disks before writing:
-
-```bash
-./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --list-devices
-```
-
-Install the packaged project assets from a local checkout onto a Proxmox host:
-
-```bash
-./scripts/install-proxmox-host.sh
-```
-
-This deploys the current repository state under `/opt/pve-dcv-integration` and refreshes packaged artifacts there for admin-side distribution.
-The resulting host-local USB writer endpoints are:
+Or call the hosted URL directly:
 
 ```text
 https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-<vmid>.sh
-https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-host-latest.sh
 ```
 
-The host installation also installs persistent systemd reapply units so a Proxmox package update can replace `pve-manager` files without permanently removing the integration. The UI hook is reinstalled automatically after watched file changes and again on later boots.
+### Write The USB Stick
 
-Refresh hosted artifacts manually on an installed Proxmox host:
+```bash
+./pve-thin-client-usb-installer-vm-100.sh
+```
+
+The standalone writer:
+
+- downloads the payload from the same Proxmox host
+- verifies `SHA256SUMS` when present
+- writes a BIOS+UEFI bootable USB medium
+- stores the VM preset on the medium
+
+### Boot The Thin Client
+
+On preseeded media, the local installer only needs:
+
+1. the streaming mode
+2. the target disk
+
+All per-VM connection data can already be baked in.
+
+## VM Metadata Model
+
+The integration consumes VM description metadata to build URLs and presets.
+
+Example:
+
+```text
+sunshine-host: 10.10.10.100
+sunshine-api-url: https://10.10.10.100:47990
+sunshine-user: sunshine
+sunshine-password: <secret>
+sunshine-pin: 0100
+sunshine-app: Desktop
+moonlight-host: 10.10.10.100
+moonlight-app: Desktop
+moonlight-resolution: 1080
+moonlight-fps: 60
+moonlight-bitrate: 20000
+moonlight-video-codec: H.264
+thinclient-default-mode: MOONLIGHT
+```
+
+The same metadata model also still supports:
+
+- `dcv-url`
+- `dcv-host`
+- `dcv-user`
+- `dcv-password`
+- `spice-url`
+- `novnc-url`
+
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| [`extension/`](./extension/) | browser extension |
+| [`proxmox-ui/`](./proxmox-ui/) | host-side Proxmox UI asset |
+| [`proxmox-host/`](./proxmox-host/) | host-side service templates |
+| [`thin-client-assistant/`](./thin-client-assistant/) | runtime, installer, USB tooling |
+| [`scripts/`](./scripts/) | install, packaging, validation, guest provisioning |
+| [`docs/`](./docs/) | deeper architecture and installation docs |
+
+## Release Artifacts
+
+`./scripts/package.sh` produces:
+
+| Artifact | Purpose |
+| --- | --- |
+| `pve-dcv-integration-extension-v<version>.zip` | browser extension bundle |
+| `pve-dcv-thin-client-assistant-v<version>.tar.gz` | installable project bundle |
+| `pve-dcv-thin-client-assistant-latest.tar.gz` | host install entrypoint |
+| `pve-thin-client-usb-installer-v<version>.sh` | generic USB writer |
+| `pve-thin-client-usb-installer-latest.sh` | latest generic USB writer |
+| `pve-thin-client-usb-payload-v<version>.tar.gz` | live installer payload |
+| `pve-thin-client-usb-payload-latest.tar.gz` | latest live installer payload |
+| `SHA256SUMS` | release verification |
+
+## Operations
+
+### Validate The Checkout
+
+```bash
+./scripts/validate-project.sh
+```
+
+### Refresh Hosted Artifacts On The Host
 
 ```bash
 sudo /opt/pve-dcv-integration/scripts/refresh-host-artifacts.sh
 ```
 
-Inspect the last refresh result:
+### Check Host Health
 
 ```bash
-cat /var/lib/pve-dcv-integration/refresh.status.json
+sudo /opt/pve-dcv-integration/scripts/check-proxmox-host.sh
 ```
 
-Run the installed host healthcheck:
+### Inspect Published Host Status
 
-```bash
-/opt/pve-dcv-integration/scripts/check-proxmox-host.sh
+```text
+https://<proxmox-host>:8443/pve-dcv-downloads/pve-dcv-downloads-status.json
 ```
 
-Create a GitHub release from a clean checkout:
+## Update Resilience
 
-```bash
-./scripts/create-github-release.sh
-```
+The host installation is designed to survive normal Proxmox updates:
 
-Install only the Proxmox UI integration on a host:
+- UI assets are re-applied automatically
+- hosted downloads are refreshed by service/timer
+- the project remains isolated under `/opt/pve-dcv-integration`
+- release-tarball installs can reuse published USB payloads instead of rebuilding locally
 
-```bash
-./scripts/install-proxmox-ui-integration.sh
-```
+## Related Docs
 
-Install or refresh the DCV TLS proxy on a Proxmox host:
-
-```bash
-./scripts/install-proxmox-dcv-proxy.sh
-```
-
-## Documentation
-
-- [docs/architecture.md](docs/architecture.md)
-- [docs/security.md](docs/security.md)
-- [docs/thin-client-installation.md](docs/thin-client-installation.md)
-- [thin-client-assistant/README.md](thin-client-assistant/README.md)
-
-## Compatibility assumptions
-
-- Proxmox VE 8.x web UI route patterns
-- Chromium-based browsers for the extension
-- Debian or Ubuntu style Linux environments for the thin-client assistant baseline
-- Local physical thin clients with a graphical session and network access to Proxmox or DCV targets
-
-## License
-
-MIT
+- [Architecture](./docs/architecture.md)
+- [Thin-client installation](./docs/thin-client-installation.md)
+- [Changelog](./CHANGELOG.md)
+- [License](./LICENSE)
