@@ -685,17 +685,18 @@ set timeout=4
 
 menuentry 'PVE Thin Client' {
   search --no-floppy --fs-uuid --set=root $root_uuid
-  linux /pve-thin-client/live/vmlinuz boot=live components username=thinclient hostname=$HOSTNAME_VALUE live-media=UUID=$root_uuid live-media-path=/pve-thin-client/live quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash $ip_arg pve_thin_client.mode=runtime
-  initrd /pve-thin-client/live/initrd.img
+  linux /live/vmlinuz boot=live components username=thinclient hostname=$HOSTNAME_VALUE live-media=/dev/disk/by-uuid/$root_uuid quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash $ip_arg pve_thin_client.mode=runtime
+  initrd /live/initrd.img
 }
 EOF
 }
 
 copy_assets() {
-  install -d -m 0755 "$TARGET_MOUNT/pve-thin-client/live" "$STATE_DIR"
-  install -m 0644 "$LIVE_ASSET_DIR/vmlinuz" "$TARGET_MOUNT/pve-thin-client/live/vmlinuz"
-  install -m 0644 "$LIVE_ASSET_DIR/initrd.img" "$TARGET_MOUNT/pve-thin-client/live/initrd.img"
-  install -m 0644 "$LIVE_ASSET_DIR/filesystem.squashfs" "$TARGET_MOUNT/pve-thin-client/live/filesystem.squashfs"
+  install -d -m 0755 "$TARGET_MOUNT/live" "$TARGET_MOUNT/pve-thin-client" "$STATE_DIR"
+  install -m 0644 "$LIVE_ASSET_DIR/vmlinuz" "$TARGET_MOUNT/live/vmlinuz"
+  install -m 0644 "$LIVE_ASSET_DIR/initrd.img" "$TARGET_MOUNT/live/initrd.img"
+  install -m 0644 "$LIVE_ASSET_DIR/filesystem.squashfs" "$TARGET_MOUNT/live/filesystem.squashfs"
+  ln -sfn ../live "$TARGET_MOUNT/pve-thin-client/live"
   if [[ -f "$GRUB_BACKGROUND_SRC" ]]; then
     install -D -m 0644 "$GRUB_BACKGROUND_SRC" "$TARGET_MOUNT/boot/grub/background.jpg"
   fi
