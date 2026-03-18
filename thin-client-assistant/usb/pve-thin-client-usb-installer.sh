@@ -16,6 +16,7 @@ ALLOW_NON_USB_DEVICE="0"
 ALLOW_SYSTEM_DISK="0"
 RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-}"
 BOOTSTRAP_DIR=""
+BOOTSTRAPPED_STANDALONE="0"
 MIN_DEVICE_BYTES="${MIN_DEVICE_BYTES:-4294967296}"
 PVE_THIN_CLIENT_PRESET_NAME="${PVE_THIN_CLIENT_PRESET_NAME:-}"
 PVE_THIN_CLIENT_PRESET_B64="${PVE_THIN_CLIENT_PRESET_B64:-}"
@@ -156,6 +157,7 @@ bootstrap_repo_root() {
   REPO_ROOT="$extracted"
   DIST_DIR="$REPO_ROOT/dist/pve-thin-client-installer"
   ASSET_DIR="$DIST_DIR/live"
+  BOOTSTRAPPED_STANDALONE="1"
   PROJECT_VERSION="$(project_version_from_root)"
   GRUB_BACKGROUND_SRC="$REPO_ROOT/thin-client-assistant/usb/assets/grub-background.jpg"
 }
@@ -264,22 +266,32 @@ run_zenity() {
   local status=0
 
   zenity_config_dir="$(mktemp -d "${TMPDIR:-/tmp}/pve-dcv-zenity.XXXXXX")"
-  mkdir -p "$zenity_config_dir/gtk-3.0"
+  mkdir -p "$zenity_config_dir/gtk-3.0" "$zenity_config_dir/.cache" "$zenity_config_dir/.local/share"
 
   if command -v dbus-run-session >/dev/null 2>&1; then
     DBUS_SESSION_BUS_ADDRESS="" \
     dbus-run-session -- env \
-      HOME="${HOME:-$zenity_config_dir}" \
+      HOME="$zenity_config_dir" \
       XDG_CONFIG_HOME="$zenity_config_dir" \
+      XDG_CACHE_HOME="$zenity_config_dir/.cache" \
+      XDG_DATA_HOME="$zenity_config_dir/.local/share" \
       GTK_THEME="${PVE_DCV_ZENITY_THEME:-Adwaita}" \
+      GTK_PATH="" \
+      GTK_RC_FILES=/dev/null \
+      GTK2_RC_FILES=/dev/null \
       GTK_USE_PORTAL=0 \
       NO_AT_BRIDGE=1 \
       zenity "$@" || status=$?
   else
     env \
-      HOME="${HOME:-$zenity_config_dir}" \
+      HOME="$zenity_config_dir" \
       XDG_CONFIG_HOME="$zenity_config_dir" \
+      XDG_CACHE_HOME="$zenity_config_dir/.cache" \
+      XDG_DATA_HOME="$zenity_config_dir/.local/share" \
       GTK_THEME="${PVE_DCV_ZENITY_THEME:-Adwaita}" \
+      GTK_PATH="" \
+      GTK_RC_FILES=/dev/null \
+      GTK2_RC_FILES=/dev/null \
       GTK_USE_PORTAL=0 \
       NO_AT_BRIDGE=1 \
       zenity "$@" || status=$?
@@ -287,6 +299,10 @@ run_zenity() {
 
   rm -rf "$zenity_config_dir"
   return "$status"
+}
+
+payload_has_live_assets() {
+  [[ -f "$ASSET_DIR/filesystem.squashfs" && -f "$ASSET_DIR/vmlinuz" && -f "$ASSET_DIR/initrd.img" && -f "$ASSET_DIR/SHA256SUMS" ]]
 }
 
 choose_device() {
@@ -509,8 +525,14 @@ release_target_device() {
 }
 
 ensure_live_assets() {
-  if [[ -f "$ASSET_DIR/filesystem.squashfs" && -f "$ASSET_DIR/vmlinuz" && -f "$ASSET_DIR/initrd.img" ]]; then
+  if payload_has_live_assets; then
     return 0
+  fi
+
+  if [[ "$BOOTSTRAPPED_STANDALONE" == "1" ]]; then
+    echo "Hosted payload bundle is incomplete: missing live installer assets under $ASSET_DIR" >&2
+    echo "Refresh host artifacts on the Proxmox server and download a fresh installer." >&2
+    exit 1
   fi
 
   "$REPO_ROOT/scripts/build-thin-client-installer.sh"
