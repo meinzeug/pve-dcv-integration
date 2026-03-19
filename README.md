@@ -27,7 +27,7 @@ Everything else can be preseeded from VM metadata and host-generated artifacts.
 
 | Layer | Purpose | Result |
 | --- | --- | --- |
-| Proxmox UI integration | Adds VM actions directly in Proxmox | `DCV`, `USB Installer`, launch helpers, downloads status |
+| Proxmox UI integration | Adds one simple VM action directly in Proxmox | `Thin Client` |
 | Host-side artifact publishing | Builds and serves VM-aware installers | `https://<host>:8443/pve-dcv-downloads/...` |
 | Thin-client runtime | Turns a device into a dedicated session endpoint | `MOONLIGHT`, `SPICE`, `NOVNC`, `DCV` |
 
@@ -61,7 +61,7 @@ flowchart LR
     USB["VM-specific USB installer"]
     Client["Thin Client\nbooted from USB or local disk"]
 
-    Admin -->|"USB Installer button"| PVE
+    Admin -->|"Thin Client button"| PVE
     PVE -->|"generate preset + artifacts"| USB
     USB -->|"write bootable stick"| Client
     Client -->|"launch selected mode"| VM
@@ -82,7 +82,7 @@ sequenceDiagram
     Admin->>PVE: Install integration on host
     Admin->>VM: Provision Sunshine guest
     VM-->>PVE: Store metadata in VM description
-    Admin->>PVE: Click "USB Installer" on VM page
+    Admin->>PVE: Click "Thin Client" on VM page
     PVE-->>Admin: Serve vm-100 installer script
     Admin->>Stick: Run USB writer
     Stick-->>Stick: Download payload + embed preset
@@ -100,13 +100,11 @@ The project can work in two UI modes:
 - browser extension from [`extension/`](./extension/)
 - host-installed UI integration from [`proxmox-ui/`](./proxmox-ui/)
 
-Operator-facing actions include:
+Operator-facing action:
 
-- `DCV`
-- `Copy DCV URL`
-- `DCV Info`
-- `USB Installer`
-- `Downloads Status`
+- `Thin Client`
+
+The Proxmox UI is intentionally reduced to one per-VM entry point. That action downloads the preconfigured USB installer for the selected VM and hides the lower-level helper links from day-to-day operators.
 
 ### 2. Host-Side Downloads
 
@@ -213,7 +211,7 @@ This helper:
 
 ### Build A VM-Specific USB Installer
 
-From the Proxmox UI, use the `USB Installer` action on the target VM.
+From the Proxmox UI, use the `Thin Client` action on the target VM.
 
 Or call the hosted URL directly:
 

@@ -1,5 +1,6 @@
 (function() {
   "use strict";
+  var THIN_CLIENT_LABEL = "Thin Client";
 
   function defaultUsbInstallerUrl() {
     return "https://{host}:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh";
@@ -217,72 +218,6 @@
     });
   }
 
-  function openDownloadsStatus() {
-    window.open(getConfig().downloadsStatusUrl, "_blank", "noopener,noreferrer");
-  }
-
-  function copyText(text, successMessage) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).then(function() {
-        if (window.Ext && Ext.toast) {
-          Ext.toast(successMessage);
-        }
-      });
-    }
-
-    var input = document.createElement("textarea");
-    input.value = text;
-    document.body.appendChild(input);
-    input.select();
-    try {
-      document.execCommand("copy");
-      if (window.Ext && Ext.toast) {
-        Ext.toast(successMessage);
-      }
-      return Promise.resolve();
-    } catch (error) {
-      return Promise.reject(error);
-    } finally {
-      document.body.removeChild(input);
-    }
-  }
-
-  function copyDcvUrlForContext(ctx) {
-    resolveLaunchState(ctx).then(function(state) {
-      if (!state.launchUrl) {
-        showError("DCV URL konnte nicht ermittelt werden. Pruefe Guest Agent oder VM-Beschreibung.");
-        return;
-      }
-      copyText(state.launchUrl, "DCV URL in die Zwischenablage kopiert.").catch(function() {
-        showError("DCV URL konnte nicht in die Zwischenablage kopiert werden.");
-      });
-    });
-  }
-
-  function showDcvInfoForContext(ctx) {
-    resolveLaunchState(ctx).then(function(state) {
-      var lines = [
-        "VM: " + ctx.vmid + " auf " + ctx.node,
-        "Quelle: " + state.source,
-        "IP/Host: " + (state.ip || state.meta.dcvHost || "n/a"),
-        "Session: " + (state.meta.dcvSession || "n/a"),
-        "Auth-Token: " + (state.meta.dcvAuthToken ? "ja" : "nein"),
-        "Auto-Submit: " + (state.meta.dcvAutoSubmit ? "ja" : "nein"),
-        "Download-Status: " + getConfig().downloadsStatusUrl,
-        "Launch-URL: " + (state.launchUrl || "nicht aufloesbar")
-      ];
-      if (window.Ext && Ext.Msg && Ext.Msg.show) {
-        Ext.Msg.show({
-          title: "PVE DCV Info",
-          message: "<pre style=\"white-space:pre-wrap;line-height:1.4\">" + Ext.String.htmlEncode(lines.join("\n")) + "</pre>",
-          buttons: Ext.Msg.OK
-        });
-      } else {
-        window.alert(lines.join("\n"));
-      }
-    });
-  }
-
   function openUsbInstaller(ctx) {
     var url = resolveUsbInstallerUrl(ctx || {});
     if (!url) {
@@ -298,41 +233,11 @@
     }
 
     var menu = button.getMenu ? button.getMenu() : button.menu;
-    if (menu && !menu.down("#pveDcvMenuItem")) {
+    if (menu && !menu.down("#pveThinClientMenuItem")) {
       menu.add({
-        itemId: "pveDcvMenuItem",
-        text: "DCV",
-        iconCls: "fa fa-desktop",
-        handler: function() {
-          openDcvForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      menu.add({
-        itemId: "pveDcvCopyMenuItem",
-        text: "Copy DCV URL",
-        iconCls: "fa fa-clipboard",
-        handler: function() {
-          copyDcvUrlForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      menu.add({
-        itemId: "pveDcvInfoMenuItem",
-        text: "DCV Info",
-        iconCls: "fa fa-info-circle",
-        handler: function() {
-          showDcvInfoForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      menu.add({
-        itemId: "pveDcvDownloadsMenuItem",
-        text: "DCV Downloads",
-        iconCls: "fa fa-download",
-        handler: openDownloadsStatus
-      });
-      menu.add({
-        itemId: "pveUsbInstallerMenuItem",
-        text: "USB Installer",
-        iconCls: "fa fa-download",
+        itemId: "pveThinClientMenuItem",
+        text: THIN_CLIENT_LABEL,
+        iconCls: "fa fa-usb",
         handler: function() {
           openUsbInstaller({ node: button.nodename, vmid: button.vmid });
         }
@@ -340,50 +245,17 @@
     }
 
     var toolbar = button.up && button.up("toolbar");
-    if (toolbar && !toolbar.down("#pveDcvLaunchButton")) {
+    if (toolbar && !toolbar.down("#pveThinClientButton")) {
       var index = toolbar.items.indexOf(button);
       toolbar.insert(index + 1, {
         xtype: "button",
-        itemId: "pveDcvLaunchButton",
-        text: "DCV",
-        iconCls: "fa fa-desktop",
-        handler: function() {
-          openDcvForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      toolbar.insert(index + 2, {
-        xtype: "button",
-        itemId: "pveDcvCopyButton",
-        text: "Copy DCV URL",
-        iconCls: "fa fa-clipboard",
-        handler: function() {
-          copyDcvUrlForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      toolbar.insert(index + 3, {
-        xtype: "button",
-        itemId: "pveDcvInfoButton",
-        text: "DCV Info",
-        iconCls: "fa fa-info-circle",
-        handler: function() {
-          showDcvInfoForContext({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      toolbar.insert(index + 4, {
-        xtype: "button",
-        itemId: "pveUsbInstallerButton",
-        text: "USB Installer",
-        iconCls: "fa fa-download",
+        itemId: "pveThinClientButton",
+        text: THIN_CLIENT_LABEL,
+        iconCls: "fa fa-usb",
         handler: function() {
           openUsbInstaller({ node: button.nodename, vmid: button.vmid });
-        }
-      });
-      toolbar.insert(index + 5, {
-        xtype: "button",
-        itemId: "pveDownloadsStatusButton",
-        text: "Downloads Status",
-        iconCls: "fa fa-list-alt",
-        handler: openDownloadsStatus
+        },
+        tooltip: "Laedt den vorkonfigurierten Thin-Client-USB-Installer fuer diese VM herunter."
       });
     }
 

@@ -1,10 +1,6 @@
 (() => {
   const MENU_TEXT = "Konsole";
-  const DCV_MENU_LABEL = "DCV";
-  const USB_BUTTON_LABEL = "USB Installer";
-  const COPY_BUTTON_LABEL = "Copy DCV URL";
-  const INFO_BUTTON_LABEL = "DCV Info";
-  const STATUS_BUTTON_LABEL = "Downloads Status";
+  const THIN_CLIENT_LABEL = "Thin Client";
   const BUTTON_MARKER = "data-pve-dcv-integration";
   const DEFAULT_TEMPLATE = "https://{ip}:8443/";
   const DEFAULT_METADATA_KEYS = ["dcv-url", "dcv-host", "dcv-ip", "dcv-user", "dcv-password", "dcv-auth-token", "dcv-session", "dcv-auto-submit"];
@@ -357,73 +353,6 @@
     }
   }
 
-  async function showDcvInfo() {
-    const ctx = await parseVmContext();
-    if (!ctx) {
-      alert("DCV: Keine VM-Ansicht erkannt.");
-      return;
-    }
-
-    const state = await resolveLaunchState(ctx);
-    const lines = [
-      `VM: ${ctx.vmid} auf ${ctx.node}`,
-      `Quelle: ${state.source}`,
-      `IP/Host: ${state.ip || state.meta.dcvHost || "n/a"}`,
-      `Session: ${state.meta.dcvSession || "n/a"}`,
-      `Auth-Token: ${state.meta.dcvAuthToken ? "ja" : "nein"}`,
-      `Auto-Submit: ${state.meta.dcvAutoSubmit ? "ja" : "nein"}`,
-      `Downloads Status: ${state.downloadsStatusUrl}`,
-      `Launch-URL: ${state.launchUrl || "nicht aufloesbar"}`
-    ];
-    alert(lines.join("\n"));
-  }
-
-  async function copyDcvUrl() {
-    const ctx = await parseVmContext();
-    if (!ctx) {
-      alert("DCV: Keine VM-Ansicht erkannt.");
-      return;
-    }
-
-    const state = await resolveLaunchState(ctx);
-    if (!state.launchUrl) {
-      alert("DCV URL konnte nicht ermittelt werden.");
-      return;
-    }
-
-    try {
-      await copyText(state.launchUrl, "DCV URL copied");
-      alert("DCV URL wurde in die Zwischenablage kopiert.");
-    } catch {
-      alert("DCV URL konnte nicht in die Zwischenablage kopiert werden.");
-    }
-  }
-
-  async function openDownloadsStatus() {
-    const options = await getOptions();
-    const url = String(options.downloadsStatusUrl || defaultDownloadsStatusUrl()).trim();
-    window.open(url, "_blank", "noopener,noreferrer");
-  }
-
-  async function openDcv() {
-    const ctx = await parseVmContext();
-    if (!ctx) {
-      alert("DCV: Keine VM-Ansicht erkannt.");
-      return;
-    }
-
-    const launchUrl = await buildLaunchUrl(ctx);
-    if (!launchUrl) {
-      alert(
-        "DCV URL konnte nicht ermittelt werden.\n" +
-          "Pruefe QEMU Guest Agent oder setze dcv-url/dcv-host in die VM-Beschreibung."
-      );
-      return;
-    }
-
-    window.open(launchUrl, "_blank", "noopener,noreferrer");
-  }
-
   async function downloadUsbInstaller() {
     const ctx = await parseVmContext();
     if (!ctx) {
@@ -490,34 +419,11 @@
     const toolbar = findToolbarRow();
     if (!toolbar) return;
 
-    const existingDcv = toolbar.querySelector(`[${BUTTON_MARKER}="${DCV_MENU_LABEL}"]`);
-    if (!existingDcv) {
-      const dcvButton = createToolbarButton(DCV_MENU_LABEL, openDcv);
-      toolbar.appendChild(dcvButton);
-    }
-
-    const existingCopy = toolbar.querySelector(`[${BUTTON_MARKER}="${COPY_BUTTON_LABEL}"]`);
-    if (!existingCopy) {
-      const copyButton = createToolbarButton(COPY_BUTTON_LABEL, copyDcvUrl);
-      toolbar.appendChild(copyButton);
-    }
-
-    const existingInfo = toolbar.querySelector(`[${BUTTON_MARKER}="${INFO_BUTTON_LABEL}"]`);
-    if (!existingInfo) {
-      const infoButton = createToolbarButton(INFO_BUTTON_LABEL, showDcvInfo);
-      toolbar.appendChild(infoButton);
-    }
-
-    const existingUsb = toolbar.querySelector(`[${BUTTON_MARKER}="${USB_BUTTON_LABEL}"]`);
-    if (!existingUsb) {
-      const usbButton = createToolbarButton(USB_BUTTON_LABEL, downloadUsbInstaller);
-      toolbar.appendChild(usbButton);
-    }
-
-    const existingStatus = toolbar.querySelector(`[${BUTTON_MARKER}="${STATUS_BUTTON_LABEL}"]`);
-    if (!existingStatus) {
-      const statusButton = createToolbarButton(STATUS_BUTTON_LABEL, openDownloadsStatus);
-      toolbar.appendChild(statusButton);
+    const existingThinClient = toolbar.querySelector(`[${BUTTON_MARKER}="${THIN_CLIENT_LABEL}"]`);
+    if (!existingThinClient) {
+      const thinClientButton = createToolbarButton(THIN_CLIENT_LABEL, downloadUsbInstaller);
+      thinClientButton.title = "Laedt den vorkonfigurierten Thin-Client-USB-Installer fuer diese VM herunter.";
+      toolbar.appendChild(thinClientButton);
     }
   }
 
@@ -547,7 +453,7 @@
     return item;
   }
 
-  function ensureDcvMenuItem() {
+  function ensureThinClientMenuItem() {
     if (!isVmView()) return;
     const menu = getVisibleMenu();
     if (!menu) return;
@@ -558,10 +464,7 @@
     });
 
     if (!hasConsoleItems) return;
-    if (!menuAlreadyHasLabel(menu, DCV_MENU_LABEL)) menu.appendChild(createMenuItem(DCV_MENU_LABEL, openDcv));
-    if (!menuAlreadyHasLabel(menu, COPY_BUTTON_LABEL)) menu.appendChild(createMenuItem(COPY_BUTTON_LABEL, copyDcvUrl));
-    if (!menuAlreadyHasLabel(menu, INFO_BUTTON_LABEL)) menu.appendChild(createMenuItem(INFO_BUTTON_LABEL, showDcvInfo));
-    if (!menuAlreadyHasLabel(menu, STATUS_BUTTON_LABEL)) menu.appendChild(createMenuItem(STATUS_BUTTON_LABEL, openDownloadsStatus));
+    if (!menuAlreadyHasLabel(menu, THIN_CLIENT_LABEL)) menu.appendChild(createMenuItem(THIN_CLIENT_LABEL, downloadUsbInstaller));
   }
 
   async function boot() {
@@ -569,13 +472,13 @@
 
     for (let i = 0; i < 12; i += 1) {
       ensureToolbarButtons();
-      ensureDcvMenuItem();
+      ensureThinClientMenuItem();
       await sleep(500);
     }
 
     window.addEventListener("hashchange", () => {
       ensureToolbarButtons();
-      ensureDcvMenuItem();
+      ensureThinClientMenuItem();
     });
 
     document.addEventListener(
@@ -583,7 +486,7 @@
       () => {
         window.setTimeout(() => {
           ensureToolbarButtons();
-          ensureDcvMenuItem();
+          ensureThinClientMenuItem();
         }, 50);
       },
       true
@@ -591,7 +494,7 @@
 
     const observer = new MutationObserver(() => {
       ensureToolbarButtons();
-      ensureDcvMenuItem();
+      ensureThinClientMenuItem();
     });
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
