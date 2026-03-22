@@ -96,6 +96,10 @@
     });
   }
 
+  function managerUrlFromHealthUrl(healthUrl) {
+    return String(healthUrl || "").replace(/\/api\/v1\/health\/?$/, "");
+  }
+
   function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
@@ -215,6 +219,7 @@
       'PVE_THIN_CLIENT_PROXMOX_PORT="8006"',
       `PVE_THIN_CLIENT_PROXMOX_NODE="${profile.node || ""}"`,
       `PVE_THIN_CLIENT_PROXMOX_VMID="${String(profile.vmid || "")}"`,
+      `PVE_THIN_CLIENT_BEAGLE_MANAGER_URL="${profile.managerUrl || ""}"`,
       `PVE_THIN_CLIENT_MOONLIGHT_HOST="${profile.streamHost || ""}"`,
       `PVE_THIN_CLIENT_MOONLIGHT_APP="${profile.app || "Desktop"}"`,
       `PVE_THIN_CLIENT_MOONLIGHT_RESOLUTION="${profile.resolution || "auto"}"`,
@@ -241,12 +246,15 @@
   }
 
   async function resolveVmProfile(ctx) {
-    const [config, resources, guestInterfaces, installerUrl, controlPlaneHealthUrl] = await Promise.all([
+    const [config, resources, guestInterfaces, installerUrl, controlPlaneHealthUrl, endpointPayload] = await Promise.all([
       apiGetJson(`/api2/json/nodes/${encodeURIComponent(ctx.node)}/qemu/${encodeURIComponent(ctx.vmid)}/config`),
       apiGetJson("/api2/json/cluster/resources?type=vm").catch(() => []),
       apiGetJson(`/api2/json/nodes/${encodeURIComponent(ctx.node)}/qemu/${encodeURIComponent(ctx.vmid)}/agent/network-get-interfaces`).catch(() => []),
       resolveUsbInstallerUrl(ctx),
-      resolveControlPlaneHealthUrl()
+      resolveControlPlaneHealthUrl(),
+      fetch(`/beagle-api/api/v1/public/vms/${encodeURIComponent(ctx.vmid)}/endpoint`, { credentials: "same-origin" })
+        .then((response) => (response.ok ? response.json() : null))
+        .catch(() => null)
     ]);
 
     const resource = (Array.isArray(resources) ? resources : []).find(
@@ -276,9 +284,12 @@
       audio: meta["moonlight-audio-config"] || "stereo",
       proxmoxHost: meta["proxmox-host"] || window.location.hostname,
       installerUrl,
-      controlPlaneHealthUrl
+      controlPlaneHealthUrl,
+      managerUrl: managerUrlFromHealthUrl(controlPlaneHealthUrl),
+      endpointSummary: endpointPayload?.endpoint || null
     };
     profile.notes = buildNotes(profile);
+    if (!profile.endpointSummary) profile.notes.push("Endpoint hat noch keinen Check-in an die Beagle Control Plane geliefert.");
     profile.endpointEnv = buildEndpointEnv(profile);
     return profile;
   }
@@ -308,8 +319,10 @@
         moonlight_video_codec: profile.codec,
         moonlight_video_decoder: profile.decoder,
         moonlight_audio_config: profile.audio,
+        manager_url: profile.managerUrl,
         installer_url: profile.installerUrl,
-        control_plane_health_url: profile.controlPlaneHealthUrl
+        control_plane_health_url: profile.controlPlaneHealthUrl,
+        endpoint_summary: profile.endpointSummary
       },
       null,
       2
@@ -346,6 +359,7 @@
               ${kvRow("Stream Host", escapeHtml(profile.streamHost || ""))}
               ${kvRow("Sunshine API", escapeHtml(profile.sunshineApiUrl || ""))}
               ${kvRow("App", escapeHtml(profile.app))}
+              ${kvRow("Manager", escapeHtml(profile.managerUrl || ""))}
               ${kvRow("Installer", escapeHtml(profile.installerUrl))}
               ${kvRow("Health", escapeHtml(profile.controlPlaneHealthUrl))}
             </div></section>
@@ -361,6 +375,14 @@
               ${kvRow("Sunshine User", escapeHtml(profile.sunshineUsername || ""))}
               ${kvRow("Sunshine Password", escapeHtml(maskSecret(profile.sunshinePassword)))}
               ${kvRow("Pairing PIN", escapeHtml(profile.sunshinePin || ""))}
+            </div></section>
+            <section class="beagle-card"><h3>Endpoint State</h3><div class="beagle-kv">
+              ${kvRow("Last Seen", escapeHtml(profile.endpointSummary?.reported_at || ""))}
+              ${kvRow("Target Reachable", escapeHtml(profile.endpointSummary?.moonlight_target_reachable || ""))}
+              ${kvRow("Sunshine Reachable", escapeHtml(profile.endpointSummary?.sunshine_api_reachable || ""))}
+              ${kvRow("Prepare", escapeHtml(profile.endpointSummary?.prepare_state || ""))}
+              ${kvRow("Last Launch", escapeHtml(profile.endpointSummary?.last_launch_mode || ""))}
+              ${kvRow("Launch Target", escapeHtml(profile.endpointSummary?.last_launch_target || ""))}
             </div></section>
           </div>
           <section class="beagle-card"><h3>Operator Notes</h3><ul class="beagle-notes">${notesHtml}</ul></section>

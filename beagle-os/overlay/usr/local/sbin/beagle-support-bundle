@@ -31,13 +31,18 @@ capture_command beagle-status /usr/local/bin/beagle-status
 capture_command journal-beagle-firstboot journalctl -u beagle-firstboot.service -b --no-pager
 capture_command journal-beagle-autologin journalctl -u beagle-autologin.service -b --no-pager
 capture_command journal-beagle-healthcheck journalctl -u beagle-healthcheck.service -b --no-pager
+capture_command journal-beagle-endpoint-report journalctl -u beagle-endpoint-report.service -b --no-pager
 capture_command journal-prepare-runtime journalctl -u pve-thin-client-prepare.service -b --no-pager
 capture_command process-list ps -ef
 
 copy_if_exists /etc/beagle-os/endpoint.env endpoint.env
 copy_if_exists /etc/pve-thin-client/thinclient.conf thinclient.conf
 copy_if_exists /etc/pve-thin-client/network.env network.env
+copy_if_exists /etc/pve-thin-client/credentials.env credentials.env
 copy_if_exists /var/lib/beagle-os/health.status health.status
+copy_if_exists /var/lib/beagle-os/endpoint-report.status endpoint-report.status
+copy_if_exists /var/lib/beagle-os/endpoint-report.response.json endpoint-report.response.json
+copy_if_exists /var/log/beagle-os/endpoint-report.last.json endpoint-report.last.json
 copy_if_exists /var/lib/pve-thin-client/runtime.status runtime.status
 
 tar -C "$STATE_DIR" -czf "$ARCHIVE" "$(basename "$BUNDLE_DIR")"

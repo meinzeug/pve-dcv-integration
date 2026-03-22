@@ -24,6 +24,7 @@ LISTEN_PORT = int(os.environ.get("BEAGLE_MANAGER_LISTEN_PORT", "9088"))
 DATA_DIR = Path(os.environ.get("BEAGLE_MANAGER_DATA_DIR", "/var/lib/beagle/beagle-manager"))
 EFFECTIVE_DATA_DIR = DATA_DIR
 API_TOKEN = os.environ.get("BEAGLE_MANAGER_API_TOKEN", "").strip()
+ENDPOINT_SHARED_TOKEN = os.environ.get("BEAGLE_ENDPOINT_SHARED_TOKEN", "").strip()
 ALLOW_LOCALHOST_NOAUTH = os.environ.get("BEAGLE_MANAGER_ALLOW_LOCALHOST_NOAUTH", "0").strip().lower() in {"1", "true", "yes", "on"}
 DOWNLOADS_STATUS_FILE = ROOT_DIR / "dist" / "beagle-downloads-status.json"
 VM_INSTALLERS_FILE = ROOT_DIR / "dist" / "beagle-vm-installers.json"
@@ -78,6 +79,12 @@ def run_text(command: list[str]) -> str:
     except (FileNotFoundError, subprocess.CalledProcessError):
         return ""
     return result.stdout
+
+
+def endpoints_dir() -> Path:
+    path = EFFECTIVE_DATA_DIR / "endpoints"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def parse_description_meta(description: str) -> dict[str, str]:
@@ -191,6 +198,7 @@ def build_profile(vm: VmSummary) -> dict[str, Any]:
 def build_health_payload() -> dict[str, Any]:
     downloads_status = load_json_file(DOWNLOADS_STATUS_FILE, {})
     vm_installers = load_json_file(VM_INSTALLERS_FILE, [])
+    endpoint_reports = list_endpoint_reports()
     return {
         "service": "beagle-control-plane",
         "ok": True,
@@ -200,8 +208,60 @@ def build_health_payload() -> dict[str, Any]:
         "downloads_status": downloads_status,
         "vm_installer_inventory_present": VM_INSTALLERS_FILE.exists(),
         "vm_installer_count": len(vm_installers) if isinstance(vm_installers, list) else 0,
+        "endpoint_count": len(endpoint_reports),
         "data_dir": str(EFFECTIVE_DATA_DIR),
     }
+
+
+def summarize_endpoint_report(payload: dict[str, Any]) -> dict[str, Any]:
+    health = payload.get("health", {}) if isinstance(payload.get("health"), dict) else {}
+    session = payload.get("session", {}) if isinstance(payload.get("session"), dict) else {}
+    runtime = payload.get("runtime", {}) if isinstance(payload.get("runtime"), dict) else {}
+    return {
+        "endpoint_id": payload.get("endpoint_id", ""),
+        "hostname": payload.get("hostname", ""),
+        "profile_name": payload.get("profile_name", ""),
+        "vmid": payload.get("vmid"),
+        "node": payload.get("node", ""),
+        "reported_at": payload.get("reported_at", ""),
+        "stream_host": payload.get("stream_host", ""),
+        "moonlight_app": payload.get("moonlight_app", ""),
+        "network_mode": payload.get("network_mode", ""),
+        "ip_summary": health.get("ip_summary", ""),
+        "networkmanager_state": health.get("networkmanager_state", ""),
+        "autologin_state": health.get("autologin_state", ""),
+        "prepare_state": health.get("prepare_state", ""),
+        "guest_agent_state": health.get("guest_agent_state", ""),
+        "moonlight_target_reachable": health.get("moonlight_target_reachable", ""),
+        "sunshine_api_reachable": health.get("sunshine_api_reachable", ""),
+        "runtime_binary": runtime.get("required_binary", ""),
+        "runtime_binary_available": runtime.get("binary_available", ""),
+        "last_launch_mode": session.get("mode", ""),
+        "last_launch_target": session.get("target", ""),
+        "last_launch_time": session.get("timestamp", ""),
+    }
+
+
+def endpoint_report_path(node: str, vmid: int) -> Path:
+    safe_node = re.sub(r"[^A-Za-z0-9._-]+", "-", str(node or "unknown")).strip("-") or "unknown"
+    return endpoints_dir() / f"{safe_node}-{int(vmid)}.json"
+
+
+def load_endpoint_report(node: str, vmid: int) -> dict[str, Any] | None:
+    payload = load_json_file(endpoint_report_path(node, vmid), None)
+    return payload if isinstance(payload, dict) else None
+
+
+def list_endpoint_reports() -> list[dict[str, Any]]:
+    reports = []
+    for path in sorted(endpoints_dir().glob("*.json")):
+        payload = load_json_file(path, None)
+        if not isinstance(payload, dict):
+            continue
+        payload["_path"] = str(path)
+        reports.append(payload)
+    reports.sort(key=lambda item: (str(item.get("node", "")), int(item.get("vmid", 0))))
+    return reports
 
 
 def build_vm_inventory() -> dict[str, Any]:
@@ -225,6 +285,7 @@ def build_vm_inventory() -> dict[str, Any]:
                 "default_mode": "MOONLIGHT" if profile["stream_host"] else "",
                 "installer_url": installer.get("installer_url") or profile["installer_url"],
                 "available_modes": installer.get("available_modes") or (["MOONLIGHT"] if profile["stream_host"] else []),
+                "endpoint": summarize_endpoint_report(load_endpoint_report(vm.node, vm.vmid) or {}),
             }
         )
     return {
@@ -253,18 +314,78 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _is_endpoint_authenticated(self) -> bool:
+        if ALLOW_LOCALHOST_NOAUTH and self.client_address[0] in {"127.0.0.1", "::1"}:
+            return True
+        if not ENDPOINT_SHARED_TOKEN:
+            return False
+        header = self.headers.get("Authorization", "")
+        if header.startswith("Bearer ") and header[7:].strip() == ENDPOINT_SHARED_TOKEN:
+            return True
+        if self.headers.get("X-Beagle-Endpoint-Token", "").strip() == ENDPOINT_SHARED_TOKEN:
+            return True
+        return False
+
     def _write_json(self, status: HTTPStatus, payload: Any) -> None:
         body = json.dumps(payload, indent=2).encode("utf-8") + b"\n"
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json_body(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        if length <= 0 or length > 256 * 1024:
+            raise ValueError("invalid content length")
+        body = self.rfile.read(length)
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("invalid payload")
+        return payload
+
+    def _endpoint_summary_for_vmid(self, vmid: int) -> dict[str, Any] | None:
+        for vm in list_vms():
+            if vm.vmid == vmid:
+                report = load_endpoint_report(vm.node, vm.vmid)
+                if report is None:
+                    return None
+                return summarize_endpoint_report(report)
+        return None
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Beagle-Api-Token, X-Beagle-Endpoint-Token")
+        self.send_header("Access-Control-Max-Age", "86400")
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+
+        if path.startswith("/api/v1/public/vms/") and path.endswith("/endpoint"):
+            vmid_text = path.split("/")[-2]
+            if not vmid_text.isdigit():
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid vmid"})
+                return
+            summary = self._endpoint_summary_for_vmid(int(vmid_text))
+            if summary is None:
+                self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "endpoint not found"})
+                return
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "service": "beagle-control-plane",
+                    "version": VERSION,
+                    "generated_at": utcnow(),
+                    "endpoint": summary,
+                },
+            )
+            return
 
         if not self._is_authenticated():
             self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
@@ -279,7 +400,37 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/vms":
             self._write_json(HTTPStatus.OK, build_vm_inventory())
             return
+        if path == "/api/v1/endpoints":
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "service": "beagle-control-plane",
+                    "version": VERSION,
+                    "generated_at": utcnow(),
+                    "endpoints": [summarize_endpoint_report(item) for item in list_endpoint_reports()],
+                },
+            )
+            return
         if path.startswith("/api/v1/vms/"):
+            if path.endswith("/endpoint"):
+                vmid_text = path.split("/")[-2]
+                if not vmid_text.isdigit():
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid vmid"})
+                    return
+                summary = self._endpoint_summary_for_vmid(int(vmid_text))
+                if summary is None:
+                    self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "endpoint not found"})
+                    return
+                self._write_json(
+                    HTTPStatus.OK,
+                    {
+                        "service": "beagle-control-plane",
+                        "version": VERSION,
+                        "generated_at": utcnow(),
+                        "endpoint": summary,
+                    },
+                )
+                return
             vmid_text = path.rsplit("/", 1)[-1]
             if not vmid_text.isdigit():
                 self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid vmid"})
@@ -301,6 +452,45 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        if path != "/api/v1/endpoints/check-in":
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
+            return
+        if not self._is_endpoint_authenticated():
+            self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+            return
+
+        try:
+            payload = self._read_json_body()
+            vmid = int(payload.get("vmid"))
+            node = str(payload.get("node", "")).strip()
+            if not node:
+                raise ValueError("missing node")
+        except Exception as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"invalid payload: {exc}"})
+            return
+
+        payload["vmid"] = vmid
+        payload["node"] = node
+        payload["received_at"] = utcnow()
+        payload["remote_addr"] = self.client_address[0]
+
+        path_obj = endpoint_report_path(node, vmid)
+        path_obj.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        self._write_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "service": "beagle-control-plane",
+                "version": VERSION,
+                "stored_at": str(path_obj),
+                "endpoint": summarize_endpoint_report(payload),
+            },
+        )
 
     def log_message(self, fmt: str, *args: Any) -> None:
         print(f"[{utcnow()}] {self.address_string()} {fmt % args}", flush=True)

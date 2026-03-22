@@ -23,6 +23,7 @@ INSTALLER_SHA256=""
 PAYLOAD_SHA256=""
 BOOTSTRAP_SHA256=""
 CREDENTIALS_ENV_FILE="${PVE_DCV_CREDENTIALS_ENV_FILE:-/etc/beagle/credentials.env}"
+BEAGLE_MANAGER_ENV_FILE="${PVE_DCV_BEAGLE_MANAGER_ENV_FILE:-/etc/beagle/beagle-manager.env}"
 
 if [[ -f "$CREDENTIALS_ENV_FILE" ]]; then
   # Optional operator-managed defaults for VM installer preset generation.
@@ -31,9 +32,16 @@ if [[ -f "$CREDENTIALS_ENV_FILE" ]]; then
   source "$CREDENTIALS_ENV_FILE"
 fi
 
+if [[ -f "$BEAGLE_MANAGER_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$BEAGLE_MANAGER_ENV_FILE"
+fi
+
 DEFAULT_PROXMOX_USERNAME="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_USERNAME:-${PVE_DCV_PROXMOX_USERNAME:-}}"
 DEFAULT_PROXMOX_PASSWORD="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_PASSWORD:-${PVE_DCV_PROXMOX_PASSWORD:-}}"
 DEFAULT_PROXMOX_TOKEN="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_TOKEN:-${PVE_DCV_PROXMOX_TOKEN:-}}"
+BEAGLE_MANAGER_URL="${PVE_DCV_BEAGLE_MANAGER_URL:-https://${SERVER_NAME}:${LISTEN_PORT}/beagle-api}"
+BEAGLE_ENDPOINT_TOKEN="${BEAGLE_ENDPOINT_SHARED_TOKEN:-}"
 
 ensure_dist_permissions() {
   install -d -m 0755 "$DIST_DIR"
@@ -87,7 +95,7 @@ PY
 
 install -m 0755 "$HOST_INSTALLER_VERSIONED" "$HOST_INSTALLER_LATEST"
 
-python3 - "$HOST_INSTALLER_VERSIONED" "$DIST_DIR" "$VM_INSTALLERS_METADATA_PATH" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$VM_INSTALLER_URL_TEMPLATE" "$BOOTSTRAP_URL" "$PAYLOAD_URL" "$DEFAULT_PROXMOX_USERNAME" "$DEFAULT_PROXMOX_PASSWORD" "$DEFAULT_PROXMOX_TOKEN" <<'PY'
+python3 - "$HOST_INSTALLER_VERSIONED" "$DIST_DIR" "$VM_INSTALLERS_METADATA_PATH" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$VM_INSTALLER_URL_TEMPLATE" "$BOOTSTRAP_URL" "$PAYLOAD_URL" "$DEFAULT_PROXMOX_USERNAME" "$DEFAULT_PROXMOX_PASSWORD" "$DEFAULT_PROXMOX_TOKEN" "$BEAGLE_MANAGER_URL" "$BEAGLE_ENDPOINT_TOKEN" <<'PY'
 import base64
 import json
 import re
@@ -109,6 +117,8 @@ payload_url = sys.argv[9]
 default_proxmox_username = sys.argv[10]
 default_proxmox_password = sys.argv[11]
 default_proxmox_token = sys.argv[12]
+beagle_manager_url = sys.argv[13]
+beagle_endpoint_token = sys.argv[14]
 template = template_path.read_text()
 
 resources_cmd = ["pvesh", "get", "/cluster/resources", "--type", "vm", "--output-format", "json"]
@@ -217,6 +227,8 @@ def build_preset(vm, config):
         "PVE_THIN_CLIENT_PRESET_PROXMOX_USERNAME": proxmox_username,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_PASSWORD": proxmox_password,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_TOKEN": proxmox_token,
+        "PVE_THIN_CLIENT_PRESET_BEAGLE_MANAGER_URL": beagle_manager_url,
+        "PVE_THIN_CLIENT_PRESET_BEAGLE_MANAGER_TOKEN": beagle_endpoint_token,
         "PVE_THIN_CLIENT_PRESET_SPICE_METHOD": "",
         "PVE_THIN_CLIENT_PRESET_SPICE_URL": "",
         "PVE_THIN_CLIENT_PRESET_SPICE_USERNAME": "",

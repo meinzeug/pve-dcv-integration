@@ -42,6 +42,10 @@
     });
   }
 
+  function managerUrlFromHealthUrl(healthUrl) {
+    return String(healthUrl || "").replace(/\/api\/v1\/health\/?$/, "");
+  }
+
   function showError(message) {
     if (window.Ext && Ext.Msg && Ext.Msg.alert) {
       Ext.Msg.alert(PRODUCT_LABEL, message);
@@ -227,6 +231,7 @@
       "PVE_THIN_CLIENT_PROXMOX_PORT=\"8006\"",
       "PVE_THIN_CLIENT_PROXMOX_NODE=\"" + (profile.node || "") + "\"",
       "PVE_THIN_CLIENT_PROXMOX_VMID=\"" + String(profile.vmid || "") + "\"",
+      "PVE_THIN_CLIENT_BEAGLE_MANAGER_URL=\"" + (profile.managerUrl || "") + "\"",
       "PVE_THIN_CLIENT_MOONLIGHT_HOST=\"" + (profile.streamHost || "") + "\"",
       "PVE_THIN_CLIENT_MOONLIGHT_APP=\"" + (profile.app || "Desktop") + "\"",
       "PVE_THIN_CLIENT_MOONLIGHT_RESOLUTION=\"" + (profile.resolution || "auto") + "\"",
@@ -267,11 +272,18 @@
     return Promise.all([
       apiGetJson("/api2/json/nodes/" + encodeURIComponent(ctx.node) + "/qemu/" + encodeURIComponent(ctx.vmid) + "/config"),
       apiGetJson("/api2/json/cluster/resources?type=vm").catch(function() { return []; }),
-      apiGetJson("/api2/json/nodes/" + encodeURIComponent(ctx.node) + "/qemu/" + encodeURIComponent(ctx.vmid) + "/agent/network-get-interfaces").catch(function() { return []; })
+      apiGetJson("/api2/json/nodes/" + encodeURIComponent(ctx.node) + "/qemu/" + encodeURIComponent(ctx.vmid) + "/agent/network-get-interfaces").catch(function() { return []; }),
+      fetch("/beagle-api/api/v1/public/vms/" + encodeURIComponent(ctx.vmid) + "/endpoint", { credentials: "same-origin" }).then(function(response) {
+        if (!response.ok) {
+          return null;
+        }
+        return response.json();
+      }).catch(function() { return null; })
     ]).then(function(results) {
       var config = results[0] || {};
       var resources = Array.isArray(results[1]) ? results[1] : [];
       var guestInterfaces = Array.isArray(results[2]) ? results[2] : [];
+      var endpointPayload = results[3] || null;
       var resource = resources.find(function(item) {
         return item && item.type === "qemu" && Number(item.vmid) === Number(ctx.vmid);
       }) || {};
@@ -300,9 +312,14 @@
         proxmoxHost: meta["proxmox-host"] || window.location.hostname,
         installerUrl: resolveUsbInstallerUrl(ctx),
         controlPlaneHealthUrl: resolveControlPlaneHealthUrl(),
+        managerUrl: managerUrlFromHealthUrl(resolveControlPlaneHealthUrl()),
+        endpointSummary: endpointPayload && endpointPayload.endpoint ? endpointPayload.endpoint : null,
         metadata: meta
       };
       profile.notes = buildNotes(profile);
+      if (!profile.endpointSummary) {
+        profile.notes.push("Endpoint hat noch keinen Check-in an die Beagle Control Plane geliefert.");
+      }
       profile.endpointEnv = buildEndpointEnv(profile);
       return profile;
     });
@@ -343,8 +360,10 @@
       moonlight_video_codec: profile.codec,
       moonlight_video_decoder: profile.decoder,
       moonlight_audio_config: profile.audio,
+      manager_url: profile.managerUrl,
       installer_url: profile.installerUrl,
-      control_plane_health_url: profile.controlPlaneHealthUrl
+      control_plane_health_url: profile.controlPlaneHealthUrl,
+      endpoint_summary: profile.endpointSummary
     }, null, 2);
 
     overlay.id = OVERLAY_ID;
@@ -378,6 +397,7 @@
                 kvRow('Stream Host', escapeHtml(profile.streamHost || '')) +
                 kvRow('Sunshine API', escapeHtml(profile.sunshineApiUrl || '')) +
                 kvRow('App', escapeHtml(profile.app)) +
+                kvRow('Manager', escapeHtml(profile.managerUrl || '')) +
                 kvRow('Installer', escapeHtml(profile.installerUrl)) +
                 kvRow('Health', escapeHtml(profile.controlPlaneHealthUrl)) +
       '      </div></section>' +
@@ -393,6 +413,14 @@
                 kvRow('Sunshine User', escapeHtml(profile.sunshineUsername || '')) +
                 kvRow('Sunshine Password', escapeHtml(maskSecret(profile.sunshinePassword))) +
                 kvRow('Pairing PIN', escapeHtml(profile.sunshinePin || '')) +
+      '      </div></section>' +
+      '      <section class="beagle-card"><h3>Endpoint State</h3><div class="beagle-kv">' +
+                kvRow('Last Seen', escapeHtml(profile.endpointSummary && profile.endpointSummary.reported_at || '')) +
+                kvRow('Target Reachable', escapeHtml(profile.endpointSummary && profile.endpointSummary.moonlight_target_reachable || '')) +
+                kvRow('Sunshine Reachable', escapeHtml(profile.endpointSummary && profile.endpointSummary.sunshine_api_reachable || '')) +
+                kvRow('Prepare', escapeHtml(profile.endpointSummary && profile.endpointSummary.prepare_state || '')) +
+                kvRow('Last Launch', escapeHtml(profile.endpointSummary && profile.endpointSummary.last_launch_mode || '')) +
+                kvRow('Launch Target', escapeHtml(profile.endpointSummary && profile.endpointSummary.last_launch_target || '')) +
       '      </div></section>' +
       '    </div>' +
       '    <section class="beagle-card"><h3>Operator Notes</h3><ul class="beagle-notes">' + notesHtml + '</ul></section>' +

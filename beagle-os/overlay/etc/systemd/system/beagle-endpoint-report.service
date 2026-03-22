@@ -1,0 +1,8 @@
+[Unit]
+Description=Report Beagle OS endpoint state to the control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/beagle-endpoint-report

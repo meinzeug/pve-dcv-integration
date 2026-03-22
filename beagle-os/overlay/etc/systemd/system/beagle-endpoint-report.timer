@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Beagle OS endpoint reporting periodically
+
+[Timer]
+OnBootSec=75s
+OnUnitActiveSec=2min
+Unit=beagle-endpoint-report.service
+
+[Install]
+WantedBy=timers.target

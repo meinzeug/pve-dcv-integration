@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import re
 import shlex
 import ssl
@@ -10,6 +11,9 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, build_opener, HTTPSHandler
+
+DEFAULT_BEAGLE_MANAGER_URL = os.environ.get("PVE_DCV_BEAGLE_MANAGER_URL", "")
+DEFAULT_BEAGLE_ENDPOINT_TOKEN = os.environ.get("BEAGLE_ENDPOINT_SHARED_TOKEN", "")
 
 
 def parse_bool(value: str) -> bool:
@@ -136,6 +140,8 @@ def build_preset(
         "PVE_THIN_CLIENT_PRESET_PROXMOX_USERNAME": proxmox_user,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_PASSWORD": password,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_TOKEN": "",
+        "PVE_THIN_CLIENT_PRESET_BEAGLE_MANAGER_URL": DEFAULT_BEAGLE_MANAGER_URL,
+        "PVE_THIN_CLIENT_PRESET_BEAGLE_MANAGER_TOKEN": DEFAULT_BEAGLE_ENDPOINT_TOKEN,
         "PVE_THIN_CLIENT_PRESET_SPICE_METHOD": "",
         "PVE_THIN_CLIENT_PRESET_SPICE_URL": "",
         "PVE_THIN_CLIENT_PRESET_SPICE_USERNAME": "",

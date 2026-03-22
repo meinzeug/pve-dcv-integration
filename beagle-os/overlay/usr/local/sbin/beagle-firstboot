@@ -26,4 +26,8 @@ if [[ -x /usr/local/sbin/beagle-healthcheck ]]; then
   /usr/local/sbin/beagle-healthcheck >/dev/null 2>&1 || true
 fi
 
+if [[ -x /usr/local/sbin/beagle-endpoint-report ]]; then
+  /usr/local/sbin/beagle-endpoint-report >/dev/null 2>&1 || true
+fi
+
 touch "$STATE_FILE"

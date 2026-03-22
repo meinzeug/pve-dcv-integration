@@ -5,6 +5,7 @@ STATE_DIR="/var/lib/beagle-os"
 LOG_DIR="/var/log/beagle-os"
 HEALTH_FILE="$STATE_DIR/health.status"
 ENDPOINT_FILE="/etc/beagle-os/endpoint.env"
+COMMON_SH="/usr/local/lib/pve-thin-client/common.sh"
 
 install -d -m 0755 "$STATE_DIR" "$LOG_DIR"
 
@@ -13,12 +14,19 @@ if [[ -r "$ENDPOINT_FILE" ]]; then
   source "$ENDPOINT_FILE"
 fi
 
-moonlight_host="${BEAGLE_ENDPOINT_MOONLIGHT_HOST:-}"
-sunshine_api_url="${BEAGLE_ENDPOINT_SUNSHINE_API_URL:-}"
-sunshine_username="${BEAGLE_ENDPOINT_SUNSHINE_USERNAME:-}"
-sunshine_password="${BEAGLE_ENDPOINT_SUNSHINE_PASSWORD:-}"
-network_mode="${BEAGLE_ENDPOINT_NETWORK_MODE:-dhcp}"
-autostart="${BEAGLE_ENDPOINT_AUTOSTART:-0}"
+if [[ -r "$COMMON_SH" ]]; then
+  # shellcheck disable=SC1090
+  source "$COMMON_SH"
+  load_runtime_config >/dev/null 2>&1 || true
+fi
+
+moonlight_host="${BEAGLE_ENDPOINT_MOONLIGHT_HOST:-${PVE_THIN_CLIENT_MOONLIGHT_HOST:-}}"
+sunshine_api_url="${BEAGLE_ENDPOINT_SUNSHINE_API_URL:-${PVE_THIN_CLIENT_SUNSHINE_API_URL:-}}"
+sunshine_username="${BEAGLE_ENDPOINT_SUNSHINE_USERNAME:-${PVE_THIN_CLIENT_SUNSHINE_USERNAME:-}}"
+sunshine_password="${BEAGLE_ENDPOINT_SUNSHINE_PASSWORD:-${PVE_THIN_CLIENT_SUNSHINE_PASSWORD:-}}"
+network_mode="${BEAGLE_ENDPOINT_NETWORK_MODE:-${PVE_THIN_CLIENT_NETWORK_MODE:-dhcp}}"
+autostart="${BEAGLE_ENDPOINT_AUTOSTART:-${PVE_THIN_CLIENT_AUTOSTART:-0}}"
+manager_url="${BEAGLE_ENDPOINT_MANAGER_URL:-${PVE_THIN_CLIENT_BEAGLE_MANAGER_URL:-}}"
 hostname_value="$(hostname)"
 ip_summary="$(ip -br addr 2>/dev/null | tr '\n' ';' | sed 's/;$/\n/' || true)"
 default_route="$(ip route show default 2>/dev/null | head -n 1 || true)"
@@ -66,6 +74,7 @@ ssh_state=${ssh_state:-unknown}
 autologin_state=${autologin_state:-unknown}
 prepare_state=${prepare_state:-unknown}
 guest_agent_state=${guest_agent_state:-unknown}
+manager_url=${manager_url:-UNSET}
 default_route=${default_route:-UNSET}
 ip_summary=${ip_summary:-UNSET}
 EOF

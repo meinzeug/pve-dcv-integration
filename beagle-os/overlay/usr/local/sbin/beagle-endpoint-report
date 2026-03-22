@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="/var/lib/beagle-os"
+LOG_DIR="/var/log/beagle-os"
+STATUS_FILE="$STATE_DIR/endpoint-report.status"
+HEALTH_FILE="$STATE_DIR/health.status"
+ENDPOINT_FILE="/etc/beagle-os/endpoint.env"
+COMMON_SH="/usr/local/lib/pve-thin-client/common.sh"
+RUNTIME_STATUS_FILE="/var/lib/pve-thin-client/runtime.status"
+LAST_RESPONSE_FILE="$STATE_DIR/endpoint-report.response.json"
+LAST_LOG_RESPONSE_FILE="$LOG_DIR/endpoint-report.last.json"
+
+install -d -m 0755 "$STATE_DIR" "$LOG_DIR"
+
+find_launch_status_file() {
+  local candidate
+  for candidate in /run/user/*/pve-thin-client/launch.status.json; do
+    [[ -r "$candidate" ]] || continue
+    printf '%s\n' "$candidate"
+    return 0
+  done
+  return 1
+}
+
+write_status_file() {
+  local timestamp="$1"
+  local manager_url="$2"
+  local check_in_state="$3"
+  local http_status="$4"
+  local stored_at="$5"
+  local error_message="$6"
+
+  cat >"$STATUS_FILE" <<EOF
+timestamp=$timestamp
+manager_url=${manager_url:-UNSET}
+check_in_state=${check_in_state:-unknown}
+http_status=${http_status:-UNSET}
+stored_at=${stored_at:-UNSET}
+error=${error_message:-UNSET}
+EOF
+  chmod 0644 "$STATUS_FILE"
+}
+
+if [[ -x /usr/local/sbin/beagle-healthcheck ]]; then
+  /usr/local/sbin/beagle-healthcheck >/dev/null 2>&1 || true
+fi
+
+if [[ -r "$ENDPOINT_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENDPOINT_FILE"
+fi
+
+if [[ -r "$COMMON_SH" ]]; then
+  # shellcheck disable=SC1090
+  source "$COMMON_SH"
+  load_runtime_config >/dev/null 2>&1 || true
+fi
+
+manager_url="${BEAGLE_ENDPOINT_MANAGER_URL:-${PVE_THIN_CLIENT_BEAGLE_MANAGER_URL:-}}"
+manager_token="${BEAGLE_ENDPOINT_MANAGER_TOKEN:-${PVE_THIN_CLIENT_BEAGLE_MANAGER_TOKEN:-}}"
+vmid="${BEAGLE_ENDPOINT_PROXMOX_VMID:-${PVE_THIN_CLIENT_PROXMOX_VMID:-}}"
+node="${BEAGLE_ENDPOINT_PROXMOX_NODE:-${PVE_THIN_CLIENT_PROXMOX_NODE:-}}"
+profile_name="${BEAGLE_ENDPOINT_PROFILE_NAME:-${PVE_THIN_CLIENT_PROFILE_NAME:-default}}"
+stream_host="${BEAGLE_ENDPOINT_MOONLIGHT_HOST:-${PVE_THIN_CLIENT_MOONLIGHT_HOST:-}}"
+moonlight_app="${BEAGLE_ENDPOINT_MOONLIGHT_APP:-${PVE_THIN_CLIENT_MOONLIGHT_APP:-Desktop}}"
+network_mode="${BEAGLE_ENDPOINT_NETWORK_MODE:-${PVE_THIN_CLIENT_NETWORK_MODE:-dhcp}}"
+launch_status_file="$(find_launch_status_file || true)"
+timestamp="$(date -Iseconds)"
+
+if [[ -z "$manager_url" || -z "$manager_token" || -z "$vmid" || -z "$node" ]]; then
+  write_status_file "$timestamp" "$manager_url" "skipped" "UNSET" "" "missing manager endpoint configuration"
+  exit 0
+fi
+
+payload_file="$(mktemp)"
+response_file="$(mktemp)"
+cleanup() {
+  rm -f "$payload_file" "$response_file"
+}
+trap cleanup EXIT
+
+export BEAGLE_REPORT_VMID="$vmid"
+export BEAGLE_REPORT_NODE="$node"
+export BEAGLE_REPORT_TIMESTAMP="$timestamp"
+export BEAGLE_REPORT_PROFILE_NAME="$profile_name"
+export BEAGLE_REPORT_STREAM_HOST="$stream_host"
+export BEAGLE_REPORT_MOONLIGHT_APP="$moonlight_app"
+export BEAGLE_REPORT_NETWORK_MODE="$network_mode"
+
+python3 - "$payload_file" "$HEALTH_FILE" "$RUNTIME_STATUS_FILE" "$launch_status_file" <<'PY'
+import json
+import os
+import sys
+from pathlib import Path
+
+payload_path = Path(sys.argv[1])
+health_path = Path(sys.argv[2])
+runtime_path = Path(sys.argv[3])
+launch_path = Path(sys.argv[4]) if sys.argv[4] else None
+
+def read_kv(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    if not path.is_file():
+        return data
+    for raw_line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if "=" not in raw_line:
+            continue
+        key, value = raw_line.split("=", 1)
+        data[key.strip()] = value.strip().strip('"')
+    return data
+
+def read_json(path: Path | None) -> dict[str, object]:
+    if path is None or not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+health = read_kv(health_path)
+runtime = read_kv(runtime_path)
+session = read_json(launch_path)
+
+payload = {
+    "endpoint_id": os.environ.get("BEAGLE_ENDPOINT_ID")
+    or f"{os.uname().nodename}-{os.environ.get('BEAGLE_REPORT_VMID', '')}",
+    "hostname": os.uname().nodename,
+    "profile_name": os.environ.get("BEAGLE_REPORT_PROFILE_NAME") or "default",
+    "vmid": int(os.environ["BEAGLE_REPORT_VMID"]),
+    "node": os.environ["BEAGLE_REPORT_NODE"],
+    "reported_at": os.environ["BEAGLE_REPORT_TIMESTAMP"],
+    "stream_host": os.environ.get("BEAGLE_REPORT_STREAM_HOST") or "",
+    "moonlight_app": os.environ.get("BEAGLE_REPORT_MOONLIGHT_APP") or "Desktop",
+    "network_mode": os.environ.get("BEAGLE_REPORT_NETWORK_MODE") or "dhcp",
+    "health": health,
+    "runtime": runtime,
+    "session": session,
+}
+
+payload_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+
+http_status="$(
+  curl -kfsS \
+    --connect-timeout 4 \
+    --max-time 12 \
+    --output "$response_file" \
+    --write-out '%{http_code}' \
+    -H "Authorization: Bearer $manager_token" \
+    -H 'Content-Type: application/json' \
+    --data @"$payload_file" \
+    "${manager_url%/}/api/v1/endpoints/check-in" || true
+)"
+
+if [[ "$http_status" != "200" ]]; then
+  error_message="check-in failed"
+  if [[ -s "$response_file" ]]; then
+    error_message="$(tr '\n' ' ' <"$response_file" | sed 's/[[:space:]]\+/ /g' | cut -c1-240)"
+  fi
+  install -m 0644 "$response_file" "$LAST_RESPONSE_FILE" 2>/dev/null || true
+  install -m 0644 "$response_file" "$LAST_LOG_RESPONSE_FILE" 2>/dev/null || true
+  write_status_file "$timestamp" "$manager_url" "error" "${http_status:-000}" "" "$error_message"
+  exit 0
+fi
+
+stored_at="$(python3 - "$response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+try:
+    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+print(payload.get("stored_at", ""))
+PY
+)"
+
+install -m 0644 "$response_file" "$LAST_RESPONSE_FILE"
+install -m 0644 "$response_file" "$LAST_LOG_RESPONSE_FILE"
+write_status_file "$timestamp" "$manager_url" "ok" "$http_status" "$stored_at" ""
