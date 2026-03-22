@@ -269,6 +269,9 @@
     if (profile.assignedTarget) {
       notes.push("Endpoint ist auf Ziel-VM " + profile.assignedTarget.name + " (#" + profile.assignedTarget.vmid + ") zugewiesen.");
     }
+    if (profile.appliedPolicy && profile.appliedPolicy.name) {
+      notes.push("Manager-Policy aktiv: " + profile.appliedPolicy.name + ".");
+    }
     if (profile.compliance && profile.compliance.status === "drifted") {
       notes.push("Endpoint driftet vom gewuenschten Profil ab (" + String(profile.compliance.drift_count || 0) + " Abweichungen).");
     }
@@ -352,6 +355,8 @@
         lastAction: lastAction,
         pendingActionCount: pendingActionCount,
         assignedTarget: controlPlaneProfile && controlPlaneProfile.assigned_target || null,
+        assignmentSource: controlPlaneProfile && controlPlaneProfile.assignment_source || "",
+        appliedPolicy: controlPlaneProfile && controlPlaneProfile.applied_policy || null,
         expectedProfileName: controlPlaneProfile && controlPlaneProfile.expected_profile_name || "",
         metadata: meta
       };
@@ -403,6 +408,8 @@
       installer_url: profile.installerUrl,
       control_plane_health_url: profile.controlPlaneHealthUrl,
       assigned_target: profile.assignedTarget,
+      assignment_source: profile.assignmentSource,
+      applied_policy: profile.appliedPolicy,
       expected_profile_name: profile.expectedProfileName,
       endpoint_summary: profile.endpointSummary,
       compliance: profile.compliance,
@@ -443,6 +450,8 @@
                 kvRow('App', escapeHtml(profile.app)) +
                 kvRow('Manager', escapeHtml(profile.managerUrl || '')) +
                 kvRow('Assigned Target', escapeHtml(profile.assignedTarget ? (profile.assignedTarget.name + " (#" + profile.assignedTarget.vmid + ")") : '')) +
+                kvRow('Assignment Source', escapeHtml(profile.assignmentSource || '')) +
+                kvRow('Applied Policy', escapeHtml(profile.appliedPolicy && profile.appliedPolicy.name || '')) +
                 kvRow('Installer', escapeHtml(profile.installerUrl)) +
                 kvRow('Health', escapeHtml(profile.controlPlaneHealthUrl)) +
       '      </div></section>' +

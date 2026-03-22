@@ -244,6 +244,7 @@
     if (!profile.guestIp) notes.push("Keine Guest-Agent-IPv4 erkannt. Beagle kann dann nur mit Metadaten arbeiten.");
     if (!notes.length) notes.push("VM-Profil ist vollstaendig genug fuer einen vorkonfigurierten Beagle-Endpoint mit Moonlight-Autostart.");
     if (profile.assignedTarget) notes.push(`Endpoint ist auf Ziel-VM ${profile.assignedTarget.name} (#${profile.assignedTarget.vmid}) zugewiesen.`);
+    if (profile.appliedPolicy?.name) notes.push(`Manager-Policy aktiv: ${profile.appliedPolicy.name}.`);
     if (profile.compliance?.status === "drifted") notes.push(`Endpoint driftet vom gewuenschten Profil ab (${String(profile.compliance.drift_count || 0)} Abweichungen).`);
     if (profile.compliance?.status === "degraded") notes.push(`Endpoint ist konfigurationsgleich, aber betrieblich degradiert (${String(profile.compliance.alert_count || 0)} Warnungen).`);
     if (Number(profile.pendingActionCount || 0) > 0) notes.push(`Fuer diesen Endpoint warten ${String(profile.pendingActionCount)} Beagle-Aktion(en) auf Ausfuehrung.`);
@@ -305,6 +306,8 @@
       lastAction: endpointPayload?.last_action || null,
       pendingActionCount: endpointPayload?.pending_action_count || 0,
       assignedTarget: controlPlaneProfile?.assigned_target || null,
+      assignmentSource: controlPlaneProfile?.assignment_source || "",
+      appliedPolicy: controlPlaneProfile?.applied_policy || null,
       expectedProfileName: controlPlaneProfile?.expected_profile_name || ""
     };
     profile.notes = buildNotes(profile);
@@ -342,6 +345,8 @@
         installer_url: profile.installerUrl,
         control_plane_health_url: profile.controlPlaneHealthUrl,
         assigned_target: profile.assignedTarget,
+        assignment_source: profile.assignmentSource,
+        applied_policy: profile.appliedPolicy,
         expected_profile_name: profile.expectedProfileName,
         endpoint_summary: profile.endpointSummary,
         compliance: profile.compliance,
@@ -385,6 +390,8 @@
               ${kvRow("App", escapeHtml(profile.app))}
               ${kvRow("Manager", escapeHtml(profile.managerUrl || ""))}
               ${kvRow("Assigned Target", escapeHtml(profile.assignedTarget ? `${profile.assignedTarget.name} (#${profile.assignedTarget.vmid})` : ""))}
+              ${kvRow("Assignment Source", escapeHtml(profile.assignmentSource || ""))}
+              ${kvRow("Applied Policy", escapeHtml(profile.appliedPolicy?.name || ""))}
               ${kvRow("Installer", escapeHtml(profile.installerUrl))}
               ${kvRow("Health", escapeHtml(profile.controlPlaneHealthUrl))}
             </div></section>

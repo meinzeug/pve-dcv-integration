@@ -100,6 +100,12 @@ def support_bundles_dir() -> Path:
     return path
 
 
+def policies_dir() -> Path:
+    path = EFFECTIVE_DATA_DIR / "policies"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def safe_slug(value: str, default: str = "item") -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip("-")
     return cleaned or default
@@ -123,6 +129,10 @@ def support_bundle_archive_path(bundle_id: str, filename: str) -> Path:
     suffix = Path(filename or "support-bundle.tar.gz").suffixes
     extension = "".join(suffix) if suffix else ".bin"
     return support_bundles_dir() / f"{safe_slug(bundle_id, 'bundle')}{extension}"
+
+
+def policy_path(name: str) -> Path:
+    return policies_dir() / f"{safe_slug(name, 'policy')}.json"
 
 
 def load_action_queue(node: str, vmid: int) -> list[dict[str, Any]]:
@@ -240,6 +250,86 @@ def store_support_bundle(node: str, vmid: int, action_id: str, filename: str, co
     return payload
 
 
+def normalize_policy_payload(payload: dict[str, Any], *, policy_name: str | None = None) -> dict[str, Any]:
+    name = str(policy_name or payload.get("name", "")).strip()
+    if not name:
+        raise ValueError("missing policy name")
+    selector = payload.get("selector", {})
+    if selector is None:
+        selector = {}
+    if not isinstance(selector, dict):
+        raise ValueError("selector must be an object")
+    profile = payload.get("profile", {})
+    if profile is None:
+        profile = {}
+    if not isinstance(profile, dict):
+        raise ValueError("profile must be an object")
+    priority = int(payload.get("priority", 100))
+    enabled = bool(payload.get("enabled", True))
+    normalized = {
+        "name": name,
+        "enabled": enabled,
+        "priority": priority,
+        "selector": {
+            "vmid": int(selector["vmid"]) if str(selector.get("vmid", "")).strip() else None,
+            "node": str(selector.get("node", "")).strip(),
+            "role": str(selector.get("role", "")).strip(),
+            "tags_any": [str(item).strip() for item in selector.get("tags_any", []) if str(item).strip()],
+            "tags_all": [str(item).strip() for item in selector.get("tags_all", []) if str(item).strip()],
+        },
+        "profile": {
+            "expected_profile_name": str(profile.get("expected_profile_name", "")).strip(),
+            "network_mode": str(profile.get("network_mode", "")).strip(),
+            "moonlight_app": str(profile.get("moonlight_app", "")).strip(),
+            "stream_host": str(profile.get("stream_host", "")).strip(),
+            "sunshine_api_url": str(profile.get("sunshine_api_url", "")).strip(),
+            "moonlight_resolution": str(profile.get("moonlight_resolution", "")).strip(),
+            "moonlight_fps": str(profile.get("moonlight_fps", "")).strip(),
+            "moonlight_bitrate": str(profile.get("moonlight_bitrate", "")).strip(),
+            "moonlight_video_codec": str(profile.get("moonlight_video_codec", "")).strip(),
+            "moonlight_video_decoder": str(profile.get("moonlight_video_decoder", "")).strip(),
+            "moonlight_audio_config": str(profile.get("moonlight_audio_config", "")).strip(),
+            "beagle_role": str(profile.get("beagle_role", "")).strip(),
+            "assigned_target": {
+                "vmid": int(profile.get("assigned_target", {}).get("vmid")) if str(profile.get("assigned_target", {}).get("vmid", "")).strip() else None,
+                "node": str(profile.get("assigned_target", {}).get("node", "")).strip(),
+            } if isinstance(profile.get("assigned_target"), dict) else None,
+        },
+        "updated_at": utcnow(),
+    }
+    return normalized
+
+
+def save_policy(payload: dict[str, Any], *, policy_name: str | None = None) -> dict[str, Any]:
+    normalized = normalize_policy_payload(payload, policy_name=policy_name)
+    policy_path(normalized["name"]).write_text(json.dumps(normalized, indent=2) + "\n", encoding="utf-8")
+    return normalized
+
+
+def load_policy(name: str) -> dict[str, Any] | None:
+    payload = load_json_file(policy_path(name), None)
+    return payload if isinstance(payload, dict) else None
+
+
+def delete_policy(name: str) -> bool:
+    path = policy_path(name)
+    if not path.exists():
+        return False
+    path.unlink()
+    return True
+
+
+def list_policies() -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for path in sorted(policies_dir().glob("*.json")):
+        payload = load_json_file(path, None)
+        if not isinstance(payload, dict):
+            continue
+        items.append(payload)
+    items.sort(key=lambda item: (-int(item.get("priority", 0)), str(item.get("name", ""))))
+    return items
+
+
 def parse_description_meta(description: str) -> dict[str, str]:
     meta: dict[str, str] = {}
     text = str(description or "").replace("\\r\\n", "\n").replace("\\n", "\n")
@@ -308,15 +398,59 @@ def find_vm(vmid: int) -> VmSummary | None:
     return next((candidate for candidate in list_vms() if candidate.vmid == vmid), None)
 
 
+def resolve_assigned_target(target_vmid: int, target_node: str, *, allow_assignment: bool) -> dict[str, Any] | None:
+    target_vm = find_vm(target_vmid)
+    if target_vm is None:
+        return None
+    if target_node and target_node != target_vm.node:
+        return None
+    target_profile = build_profile(target_vm, allow_assignment=False)
+    return {
+        "vmid": target_vm.vmid,
+        "node": target_vm.node,
+        "name": target_vm.name,
+        "stream_host": target_profile["stream_host"],
+        "sunshine_api_url": target_profile["sunshine_api_url"],
+        "moonlight_app": target_profile["moonlight_app"],
+    }
+
+
+def resolve_policy_for_vm(vm: VmSummary, meta: dict[str, str]) -> dict[str, Any] | None:
+    tags = {item.strip() for item in str(vm.tags or "").split(";") if item.strip()}
+    role = meta.get("beagle-role", "desktop" if meta.get("moonlight-host") or meta.get("sunshine-ip") or meta.get("sunshine-host") else "")
+    for policy in list_policies():
+        if not policy.get("enabled", True):
+            continue
+        selector = policy.get("selector", {}) if isinstance(policy.get("selector"), dict) else {}
+        selector_vmid = selector.get("vmid")
+        if selector_vmid is not None and int(selector_vmid) != vm.vmid:
+            continue
+        if selector.get("node") and str(selector.get("node")).strip() != vm.node:
+            continue
+        if selector.get("role") and str(selector.get("role")).strip() != role:
+            continue
+        tags_any = {item for item in selector.get("tags_any", []) if item}
+        if tags_any and not tags.intersection(tags_any):
+            continue
+        tags_all = {item for item in selector.get("tags_all", []) if item}
+        if tags_all and not tags_all.issubset(tags):
+            continue
+        return policy
+    return None
+
+
 def build_profile(vm: VmSummary, *, allow_assignment: bool = True) -> dict[str, Any]:
     config = get_vm_config(vm.node, vm.vmid)
     meta = parse_description_meta(config.get("description", ""))
+    matched_policy = resolve_policy_for_vm(vm, meta) if allow_assignment else None
+    policy_profile = matched_policy.get("profile", {}) if isinstance(matched_policy, dict) and isinstance(matched_policy.get("profile"), dict) else {}
     guest_ip = first_guest_ipv4(vm.vmid)
-    stream_host = meta.get("moonlight-host") or meta.get("sunshine-ip") or meta.get("sunshine-host") or guest_ip
-    sunshine_api_url = meta.get("sunshine-api-url") or (f"https://{stream_host}:47990" if stream_host else "")
+    stream_host = policy_profile.get("stream_host") or meta.get("moonlight-host") or meta.get("sunshine-ip") or meta.get("sunshine-host") or guest_ip
+    sunshine_api_url = policy_profile.get("sunshine_api_url") or meta.get("sunshine-api-url") or (f"https://{stream_host}:47990" if stream_host else "")
     installer_url = f"/beagle-downloads/pve-thin-client-usb-installer-vm-{vm.vmid}.sh"
     has_sunshine_password = bool(meta.get("sunshine-password"))
-    expected_profile_name = meta.get("beagle-profile-name", "")
+    expected_profile_name = policy_profile.get("expected_profile_name") or meta.get("beagle-profile-name", "")
+    moonlight_app = policy_profile.get("moonlight_app") or meta.get("moonlight-app", meta.get("sunshine-app", "Desktop"))
     profile = {
         "vmid": vm.vmid,
         "node": vm.node,
@@ -329,20 +463,24 @@ def build_profile(vm: VmSummary, *, allow_assignment: bool = True) -> dict[str, 
         "sunshine_username": meta.get("sunshine-user", ""),
         "sunshine_password_configured": has_sunshine_password,
         "sunshine_pin": meta.get("sunshine-pin", f"{vm.vmid % 10000:04d}"),
-        "moonlight_app": meta.get("moonlight-app", meta.get("sunshine-app", "Desktop")),
-        "moonlight_resolution": meta.get("moonlight-resolution", "auto"),
-        "moonlight_fps": meta.get("moonlight-fps", "60"),
-        "moonlight_bitrate": meta.get("moonlight-bitrate", "20000"),
-        "moonlight_video_codec": meta.get("moonlight-video-codec", "H.264"),
-        "moonlight_video_decoder": meta.get("moonlight-video-decoder", "auto"),
-        "moonlight_audio_config": meta.get("moonlight-audio-config", "stereo"),
-        "network_mode": meta.get("thinclient-network-mode", "dhcp"),
+        "moonlight_app": moonlight_app,
+        "moonlight_resolution": policy_profile.get("moonlight_resolution") or meta.get("moonlight-resolution", "auto"),
+        "moonlight_fps": policy_profile.get("moonlight_fps") or meta.get("moonlight-fps", "60"),
+        "moonlight_bitrate": policy_profile.get("moonlight_bitrate") or meta.get("moonlight-bitrate", "20000"),
+        "moonlight_video_codec": policy_profile.get("moonlight_video_codec") or meta.get("moonlight-video-codec", "H.264"),
+        "moonlight_video_decoder": policy_profile.get("moonlight_video_decoder") or meta.get("moonlight-video-decoder", "auto"),
+        "moonlight_audio_config": policy_profile.get("moonlight_audio_config") or meta.get("moonlight-audio-config", "stereo"),
+        "network_mode": policy_profile.get("network_mode") or meta.get("thinclient-network-mode", "dhcp"),
         "default_mode": "MOONLIGHT" if stream_host else "",
         "beagle_hostname": safe_hostname(config.get("name") or vm.name, vm.vmid),
-        "beagle_role": meta.get("beagle-role", "desktop" if stream_host else ""),
+        "beagle_role": policy_profile.get("beagle_role") or meta.get("beagle-role", "desktop" if stream_host else ""),
         "expected_profile_name": expected_profile_name,
         "installer_url": installer_url,
         "metadata_keys": sorted(meta.keys()),
+        "applied_policy": {
+            "name": matched_policy.get("name", ""),
+            "priority": matched_policy.get("priority", 0),
+        } if matched_policy else None,
         "config_digest": {
             "memory": config.get("memory"),
             "cores": config.get("cores"),
@@ -354,28 +492,32 @@ def build_profile(vm: VmSummary, *, allow_assignment: bool = True) -> dict[str, 
         },
     }
     if allow_assignment:
-        assigned_vmid = meta.get("beagle-target-vmid", "").strip()
-        if assigned_vmid.isdigit():
-            target_vmid = int(assigned_vmid)
-            target_node = meta.get("beagle-target-node", "").strip()
-            target_vm = find_vm(target_vmid)
-            if target_vm is not None and (not target_node or target_node == target_vm.node):
-                target_profile = build_profile(target_vm, allow_assignment=False)
-                profile["assigned_target"] = {
-                    "vmid": target_vm.vmid,
-                    "node": target_vm.node,
-                    "name": target_vm.name,
-                    "stream_host": target_profile["stream_host"],
-                    "sunshine_api_url": target_profile["sunshine_api_url"],
-                    "moonlight_app": target_profile["moonlight_app"],
-                }
+        target_vmid = None
+        target_node = ""
+        assignment_source = ""
+        policy_target = policy_profile.get("assigned_target") if isinstance(policy_profile.get("assigned_target"), dict) else None
+        if policy_target and policy_target.get("vmid") is not None:
+            target_vmid = int(policy_target["vmid"])
+            target_node = str(policy_target.get("node", "")).strip()
+            assignment_source = "manager-policy"
+        else:
+            assigned_vmid = meta.get("beagle-target-vmid", "").strip()
+            if assigned_vmid.isdigit():
+                target_vmid = int(assigned_vmid)
+                target_node = meta.get("beagle-target-node", "").strip()
+                assignment_source = "vm-metadata"
+        if target_vmid is not None:
+            assigned_target = resolve_assigned_target(target_vmid, target_node, allow_assignment=False)
+            if assigned_target is not None:
+                profile["assigned_target"] = assigned_target
+                profile["assignment_source"] = assignment_source
                 profile["beagle_role"] = "endpoint"
-                if not meta.get("moonlight-host") and target_profile["stream_host"]:
-                    profile["stream_host"] = target_profile["stream_host"]
-                if not meta.get("sunshine-api-url") and target_profile["sunshine_api_url"]:
-                    profile["sunshine_api_url"] = target_profile["sunshine_api_url"]
-                if not meta.get("moonlight-app") and target_profile["moonlight_app"]:
-                    profile["moonlight_app"] = target_profile["moonlight_app"]
+                if (assignment_source == "manager-policy" or not meta.get("moonlight-host")) and assigned_target["stream_host"]:
+                    profile["stream_host"] = assigned_target["stream_host"]
+                if (assignment_source == "manager-policy" or not meta.get("sunshine-api-url")) and assigned_target["sunshine_api_url"]:
+                    profile["sunshine_api_url"] = assigned_target["sunshine_api_url"]
+                if (assignment_source == "manager-policy" or not meta.get("moonlight-app")) and assigned_target["moonlight_app"]:
+                    profile["moonlight_app"] = assigned_target["moonlight_app"]
                 if not expected_profile_name:
                     profile["expected_profile_name"] = f"vm-{target_vmid}"
                 profile["default_mode"] = "MOONLIGHT" if profile["stream_host"] else ""
@@ -472,6 +614,7 @@ def build_health_payload() -> dict[str, Any]:
     downloads_status = load_json_file(DOWNLOADS_STATUS_FILE, {})
     vm_installers = load_json_file(VM_INSTALLERS_FILE, [])
     endpoint_reports = list_endpoint_reports()
+    policies = list_policies()
     status_counts = {"healthy": 0, "degraded": 0, "drifted": 0, "pending": 0, "unmanaged": 0}
     for vm in list_vms():
         compliance = build_vm_state(vm)["compliance"]
@@ -487,6 +630,7 @@ def build_health_payload() -> dict[str, Any]:
         "vm_installer_inventory_present": VM_INSTALLERS_FILE.exists(),
         "vm_installer_count": len(vm_installers) if isinstance(vm_installers, list) else 0,
         "endpoint_count": len(endpoint_reports),
+        "policy_count": len(policies),
         "endpoint_status_counts": status_counts,
         "data_dir": str(EFFECTIVE_DATA_DIR),
     }
@@ -566,6 +710,7 @@ def build_vm_inventory() -> dict[str, Any]:
                 "installer_url": installer.get("installer_url") or profile["installer_url"],
                 "available_modes": installer.get("available_modes") or (["MOONLIGHT"] if profile["stream_host"] else []),
                 "assigned_target": profile.get("assigned_target"),
+                "applied_policy": profile.get("applied_policy"),
                 "endpoint": state["endpoint"],
                 "compliance": state["compliance"],
             }
@@ -741,6 +886,33 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
             return
+        if path == "/api/v1/policies":
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "service": "beagle-control-plane",
+                    "version": VERSION,
+                    "generated_at": utcnow(),
+                    "policies": list_policies(),
+                },
+            )
+            return
+        if path.startswith("/api/v1/policies/"):
+            policy_name = path.rsplit("/", 1)[-1]
+            policy = load_policy(policy_name)
+            if policy is None:
+                self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "policy not found"})
+                return
+            self._write_json(
+                HTTPStatus.OK,
+                {
+                    "service": "beagle-control-plane",
+                    "version": VERSION,
+                    "generated_at": utcnow(),
+                    "policy": policy,
+                },
+            )
+            return
         if path.startswith("/api/v1/support-bundles/") and path.endswith("/download"):
             bundle_id = path.split("/")[-2]
             metadata = find_support_bundle_metadata(bundle_id)
@@ -759,6 +931,27 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
         if path.startswith("/api/v1/vms/"):
+            if path.endswith("/policy"):
+                vmid_text = path.split("/")[-2]
+                if not vmid_text.isdigit():
+                    self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": "invalid vmid"})
+                    return
+                vm = find_vm(int(vmid_text))
+                if vm is None:
+                    self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "vm not found"})
+                    return
+                profile = build_profile(vm)
+                self._write_json(
+                    HTTPStatus.OK,
+                    {
+                        "service": "beagle-control-plane",
+                        "version": VERSION,
+                        "generated_at": utcnow(),
+                        "applied_policy": profile.get("applied_policy"),
+                        "assignment_source": profile.get("assignment_source", ""),
+                    },
+                )
+                return
             if path.endswith("/support-bundles"):
                 vmid_text = path.split("/")[-2]
                 if not vmid_text.isdigit():
@@ -924,6 +1117,28 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/v1/policies":
+            if not self._is_authenticated():
+                self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+                return
+            try:
+                payload = self._read_json_body()
+                policy = save_policy(payload)
+            except Exception as exc:
+                self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"invalid policy: {exc}"})
+                return
+            self._write_json(
+                HTTPStatus.CREATED,
+                {
+                    "ok": True,
+                    "service": "beagle-control-plane",
+                    "version": VERSION,
+                    "generated_at": utcnow(),
+                    "policy": policy,
+                },
+            )
+            return
+
         if path == "/api/v1/endpoints/support-bundles/upload":
             if not self._is_endpoint_authenticated():
                 self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
@@ -1021,6 +1236,57 @@ class Handler(BaseHTTPRequestHandler):
                 "version": VERSION,
                 "stored_at": str(path_obj),
                 "endpoint": summarize_endpoint_report(payload),
+            },
+        )
+
+    def do_PUT(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if not path.startswith("/api/v1/policies/"):
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
+            return
+        if not self._is_authenticated():
+            self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+            return
+        policy_name = path.rsplit("/", 1)[-1]
+        try:
+            payload = self._read_json_body()
+            policy = save_policy(payload, policy_name=policy_name)
+        except Exception as exc:
+            self._write_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"invalid policy: {exc}"})
+            return
+        self._write_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "service": "beagle-control-plane",
+                "version": VERSION,
+                "generated_at": utcnow(),
+                "policy": policy,
+            },
+        )
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        if not path.startswith("/api/v1/policies/"):
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not found"})
+            return
+        if not self._is_authenticated():
+            self._write_json(HTTPStatus.UNAUTHORIZED, {"ok": False, "error": "unauthorized"})
+            return
+        policy_name = path.rsplit("/", 1)[-1]
+        if not delete_policy(policy_name):
+            self._write_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "policy not found"})
+            return
+        self._write_json(
+            HTTPStatus.OK,
+            {
+                "ok": True,
+                "service": "beagle-control-plane",
+                "version": VERSION,
+                "generated_at": utcnow(),
+                "deleted": policy_name,
             },
         )
 
