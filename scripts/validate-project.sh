@@ -28,8 +28,8 @@ if (( ${#python_files[@]} > 0 )); then
   python3 -m py_compile "${python_files[@]}"
 fi
 
-node --check "$ROOT_DIR/proxmox-ui/pve-dcv-integration.js"
-node --check "$ROOT_DIR/proxmox-ui/pve-dcv-autologin.js"
+node --check "$ROOT_DIR/proxmox-ui/beagle-ui.js"
+node --check "$ROOT_DIR/proxmox-ui/beagle-autologin.js"
 node --check "$ROOT_DIR/extension/content.js"
 node --check "$ROOT_DIR/extension/options.js"
 
@@ -51,8 +51,8 @@ if [[ "$RUN_PACKAGE" == "1" ]]; then
   "$ROOT_DIR/scripts/package.sh"
 fi
 
-if [[ -f "$ROOT_DIR/dist/pve-dcv-integration-extension-v${VERSION}.zip" ]]; then
-  echo "OK  artifact dist/pve-dcv-integration-extension-v${VERSION}.zip"
+if [[ -f "$ROOT_DIR/dist/beagle-extension-v${VERSION}.zip" ]]; then
+  echo "OK  artifact dist/beagle-extension-v${VERSION}.zip"
 fi
 
 echo "Project validation completed successfully."

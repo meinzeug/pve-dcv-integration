@@ -2,7 +2,36 @@
 set -euo pipefail
 
 DEFAULT_CONFIG_DIR="/etc/pve-thin-client"
-LIVE_STATE_DIR="/run/live/medium/pve-thin-client/state"
+LIVE_STATE_DIR_DEFAULT="/run/live/medium/pve-thin-client/state"
+
+find_live_state_dir() {
+  local dir
+  local -a candidates=(
+    "${LIVE_STATE_DIR:-$LIVE_STATE_DIR_DEFAULT}"
+    "$LIVE_STATE_DIR_DEFAULT"
+    "/lib/live/mount/medium/pve-thin-client/state"
+  )
+
+  for dir in "${candidates[@]}"; do
+    if [[ -f "$dir/thinclient.conf" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+  done
+
+  if command -v findmnt >/dev/null 2>&1; then
+    while IFS= read -r dir; do
+      [[ -n "$dir" ]] || continue
+      dir="$dir/pve-thin-client/state"
+      if [[ -f "$dir/thinclient.conf" ]]; then
+        printf '%s\n' "$dir"
+        return 0
+      fi
+    done < <(findmnt -rn -o TARGET 2>/dev/null || true)
+  fi
+
+  return 1
+}
 
 find_config_dir() {
   if [[ -f "${CONFIG_DIR:-$DEFAULT_CONFIG_DIR}/thinclient.conf" ]]; then
@@ -10,7 +39,7 @@ find_config_dir() {
     return 0
   fi
 
-  if [[ -f "$LIVE_STATE_DIR/thinclient.conf" ]]; then
+  if LIVE_STATE_DIR="$(find_live_state_dir)"; then
     printf '%s\n' "$LIVE_STATE_DIR"
     return 0
   fi
@@ -30,15 +59,24 @@ load_runtime_config() {
   NETWORK_FILE="$dir/network.env"
   CREDENTIALS_FILE="$dir/credentials.env"
 
+  if [[ ! -r "$CONFIG_FILE" ]]; then
+    echo "Thin-client config is not readable: $CONFIG_FILE" >&2
+    return 1
+  fi
+
   # shellcheck disable=SC1090
   source "$CONFIG_FILE"
-  if [[ -f "$NETWORK_FILE" ]]; then
+  if [[ -r "$NETWORK_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$NETWORK_FILE"
+  elif [[ -e "$NETWORK_FILE" ]]; then
+    echo "Skipping unreadable network file: $NETWORK_FILE" >&2
   fi
-  if [[ -f "$CREDENTIALS_FILE" ]]; then
+  if [[ -r "$CREDENTIALS_FILE" ]]; then
     # shellcheck disable=SC1090
     source "$CREDENTIALS_FILE"
+  elif [[ -e "$CREDENTIALS_FILE" ]]; then
+    echo "Skipping unreadable credentials file: $CREDENTIALS_FILE" >&2
   fi
 }
 

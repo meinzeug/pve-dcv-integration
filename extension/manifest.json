@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PVE DCV Integration",
-  "version": "3.3.1",
-  "description": "Adds a DCV action to Proxmox VE VM pages and resolves launch targets from API and metadata.",
+  "name": "Beagle OS Integration",
+  "version": "3.4.0",
+  "description": "Adds Beagle profile, installer and control-plane actions to Proxmox VE VM pages.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://*/*",
@@ -18,7 +18,7 @@
   "options_page": "options.html",
   "browser_specific_settings": {
     "gecko": {
-      "id": "pve-dcv-integration@meinzeug"
+      "id": "beagle-os@meinzeug"
     }
   }
 }

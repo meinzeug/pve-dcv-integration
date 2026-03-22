@@ -1,36 +1,33 @@
-const DEFAULT_TEMPLATE = "https://{ip}:8443/";
-const DEFAULT_METADATA_KEYS = "dcv-url,dcv-host,dcv-ip,dcv-user,dcv-password,dcv-auth-token,dcv-session,dcv-auto-submit";
-
 function defaultUsbInstallerUrl() {
-  return "https://{host}:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh";
+  return "https://{host}:8443/beagle-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh";
+}
+
+function defaultControlPlaneHealthUrl() {
+  return "https://{host}:8443/beagle-api/api/v1/health";
 }
 
 function loadOptions() {
   chrome.storage.sync.get(
     {
-      urlTemplate: DEFAULT_TEMPLATE,
-      fallbackUrl: "",
-      metadataKeys: DEFAULT_METADATA_KEYS,
-      usbInstallerUrl: defaultUsbInstallerUrl()
+      usbInstallerUrl: defaultUsbInstallerUrl(),
+      controlPlaneHealthUrl: defaultControlPlaneHealthUrl()
     },
     (data) => {
-      document.getElementById("urlTemplate").value = data.urlTemplate || DEFAULT_TEMPLATE;
-      document.getElementById("fallbackUrl").value = data.fallbackUrl || "";
-      document.getElementById("metadataKeys").value = data.metadataKeys || DEFAULT_METADATA_KEYS;
       document.getElementById("usbInstallerUrl").value =
         data.usbInstallerUrl || defaultUsbInstallerUrl();
+      document.getElementById("controlPlaneHealthUrl").value =
+        data.controlPlaneHealthUrl || defaultControlPlaneHealthUrl();
     }
   );
 }
 
 function saveOptions() {
-  const urlTemplate = document.getElementById("urlTemplate").value.trim() || DEFAULT_TEMPLATE;
-  const fallbackUrl = document.getElementById("fallbackUrl").value.trim();
-  const metadataKeys = document.getElementById("metadataKeys").value.trim() || DEFAULT_METADATA_KEYS;
   const usbInstallerUrl =
     document.getElementById("usbInstallerUrl").value.trim() || defaultUsbInstallerUrl();
+  const controlPlaneHealthUrl =
+    document.getElementById("controlPlaneHealthUrl").value.trim() || defaultControlPlaneHealthUrl();
 
-  chrome.storage.sync.set({ urlTemplate, fallbackUrl, metadataKeys, usbInstallerUrl }, () => {
+  chrome.storage.sync.set({ usbInstallerUrl, controlPlaneHealthUrl }, () => {
     const status = document.getElementById("status");
     status.textContent = "Saved.";
     setTimeout(() => {

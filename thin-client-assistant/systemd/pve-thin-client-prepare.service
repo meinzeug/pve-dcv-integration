@@ -1,8 +1,7 @@
 [Unit]
 Description=Prepare PVE thin-client runtime
-After=local-fs.target systemd-networkd.service
+After=local-fs.target
 Before=getty@tty1.service
-Wants=systemd-networkd.service
 
 [Service]
 Type=oneshot

@@ -2,19 +2,20 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="${PVE_DCV_PROXY_CONFIG_DIR:-/etc/pve-dcv-integration}"
-ENV_FILE="$CONFIG_DIR/dcv-proxy.env"
+CONFIG_DIR="${PVE_DCV_PROXY_CONFIG_DIR:-/etc/beagle}"
+ENV_FILE="$CONFIG_DIR/beagle-proxy.env"
 LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
 BACKEND_HOST="${PVE_DCV_PROXY_BACKEND_HOST:-}"
 BACKEND_PORT="${PVE_DCV_PROXY_BACKEND_PORT:-8443}"
 BACKEND_VMID="${PVE_DCV_PROXY_VMID:-}"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
-DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/beagle-downloads}"
 DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
+BEAGLE_API_UPSTREAM="${BEAGLE_API_UPSTREAM:-http://127.0.0.1:9088}"
 CERT_FILE="${PVE_DCV_PROXY_CERT_FILE:-/etc/pve/local/pveproxy-ssl.pem}"
 KEY_FILE="${PVE_DCV_PROXY_KEY_FILE:-/etc/pve/local/pveproxy-ssl.key}"
-NGINX_SITE="/etc/nginx/sites-available/pve-dcv-integration-dcv-proxy.conf"
-NGINX_ENABLED="/etc/nginx/sites-enabled/pve-dcv-integration-dcv-proxy.conf"
+NGINX_SITE="/etc/nginx/sites-available/beagle-proxy.conf"
+NGINX_ENABLED="/etc/nginx/sites-enabled/beagle-proxy.conf"
 
 ensure_root() {
   if [[ "${EUID}" -eq 0 ]]; then
@@ -31,6 +32,7 @@ ensure_root() {
       PVE_DCV_PROXY_SERVER_NAME="$SERVER_NAME" \
       PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
       PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
+      BEAGLE_API_UPSTREAM="$BEAGLE_API_UPSTREAM" \
       PVE_DCV_PROXY_CERT_FILE="$CERT_FILE" \
       PVE_DCV_PROXY_KEY_FILE="$KEY_FILE" \
       "$0" "$@"
@@ -41,7 +43,7 @@ ensure_root() {
 }
 
 log() {
-  echo "[pve-dcv-proxy] $*"
+  echo "[beagle-proxy] $*"
 }
 
 ensure_dependencies() {
@@ -64,8 +66,8 @@ disable_proxmox_enterprise_repo() {
 
   while IFS= read -r file; do
     grep -q 'enterprise.proxmox.com' "$file" || continue
-    cp "$file" "$file.pve-dcv-backup"
-    awk '!/enterprise\.proxmox\.com/' "$file.pve-dcv-backup" > "$file"
+    cp "$file" "$file.beagle-backup"
+    awk '!/enterprise\.proxmox\.com/' "$file.beagle-backup" > "$file"
     found=1
   done < <(find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' \) 2>/dev/null)
 
@@ -76,9 +78,9 @@ restore_proxmox_enterprise_repo() {
   local backup original
 
   while IFS= read -r backup; do
-    original="${backup%.pve-dcv-backup}"
+    original="${backup%.beagle-backup}"
     mv "$backup" "$original"
-  done < <(find /etc/apt -maxdepth 2 -type f -name '*.pve-dcv-backup' 2>/dev/null)
+  done < <(find /etc/apt -maxdepth 2 -type f -name '*.beagle-backup' 2>/dev/null)
 }
 
 apt_update_with_proxmox_fallback() {
@@ -111,6 +113,7 @@ load_env_file() {
   SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-${SERVER_NAME}}"
   DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-${DOWNLOADS_PATH}}"
   DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-${DOWNLOADS_BASE_URL}}"
+  BEAGLE_API_UPSTREAM="${BEAGLE_API_UPSTREAM:-${BEAGLE_API_UPSTREAM}}"
   CERT_FILE="${PVE_DCV_PROXY_CERT_FILE:-${CERT_FILE}}"
   KEY_FILE="${PVE_DCV_PROXY_KEY_FILE:-${KEY_FILE}}"
 }
@@ -222,7 +225,7 @@ auto_detect_backend() {
   fi
 
   if (( ${#candidates[@]} > 1 )); then
-    log "Multiple DCV proxy candidates detected (${candidates[*]}). Set PVE_DCV_PROXY_VMID or PVE_DCV_PROXY_BACKEND_HOST explicitly."
+    log "Multiple backend candidates detected (${candidates[*]}). Set PVE_DCV_PROXY_VMID or PVE_DCV_PROXY_BACKEND_HOST explicitly."
   fi
 
   return 1
@@ -281,8 +284,8 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_timeout 1d;
 
-    location = /pve-dcv-autologin.js {
-        alias ${ROOT_DIR}/proxmox-ui/pve-dcv-autologin.js;
+    location = /beagle-autologin.js {
+        alias ${ROOT_DIR}/proxmox-ui/beagle-autologin.js;
         add_header Cache-Control "no-store";
     }
 
@@ -292,13 +295,23 @@ server {
 
     location ^~ ${DOWNLOADS_PATH}/ {
         alias ${ROOT_DIR}/dist/;
-        index pve-dcv-downloads-index.html;
+        index beagle-downloads-index.html;
         add_header Cache-Control "no-store";
         autoindex on;
         types {
             application/x-sh sh;
             text/plain txt;
         }
+    }
+
+    location /beagle-api/ {
+        proxy_pass ${BEAGLE_API_UPSTREAM}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 30;
+        proxy_send_timeout 30;
     }
 
 EOF
@@ -320,7 +333,7 @@ EOF
         proxy_read_timeout 86400;
         proxy_send_timeout 86400;
         sub_filter_once on;
-        sub_filter '</body>' '<script src="/pve-dcv-autologin.js"></script></body>';
+        sub_filter '</body>' '<script src="/beagle-autologin.js"></script></body>';
     }
 }
 EOF
@@ -330,7 +343,7 @@ EOF
   cat >> "$NGINX_SITE" <<EOF
     location = / {
         default_type text/html;
-        return 200 '<!doctype html><html><head><meta charset="utf-8"><title>PVE DCV Integration</title></head><body><h1>PVE DCV Integration</h1><p>Host-local downloads are available under <a href="${DOWNLOADS_PATH}/">${DOWNLOADS_PATH}/</a>.</p></body></html>';
+        return 200 '<!doctype html><html><head><meta charset="utf-8"><title>Beagle OS</title></head><body><h1>Beagle OS</h1><p>Host-local downloads are available under <a href="${DOWNLOADS_PATH}/">${DOWNLOADS_PATH}/</a>.</p></body></html>';
     }
 
     location / {
@@ -362,7 +375,7 @@ ensure_dependencies
 
 if [[ -z "$BACKEND_HOST" ]]; then
   if ! auto_detect_backend; then
-    log "No DCV backend detected. Configuring downloads-only HTTPS endpoint on https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}/."
+    log "No backend detected. Configuring downloads-only HTTPS endpoint on https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}/."
   fi
 fi
 
@@ -374,7 +387,7 @@ nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
 if [[ -n "$BACKEND_HOST" ]]; then
-  log "Configured DCV TLS proxy on https://${SERVER_NAME}:${LISTEN_PORT}/ -> https://${BACKEND_HOST}:${BACKEND_PORT}/"
+  log "Configured Beagle proxy on https://${SERVER_NAME}:${LISTEN_PORT}/ -> https://${BACKEND_HOST}:${BACKEND_PORT}/"
 else
   log "Configured host-local HTTPS downloads on ${DOWNLOADS_BASE_URL%/}/"
 fi

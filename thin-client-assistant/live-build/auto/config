@@ -14,7 +14,7 @@ if [[ -z "$THINCLIENT_LINUX_FLAVOUR" ]]; then
   esac
 fi
 
-BOOT_ARGS="boot=live components username=thinclient hostname=pve-thin-client ip=dhcp quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash irqpoll pci=nomsi noapic pve_thin_client.mode=installer"
+BOOT_ARGS="boot=live components username=thinclient hostname=pve-thin-client ip=dhcp quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash pve_thin_client.mode=installer"
 
 lb config noauto \
   --mode debian \
@@ -24,7 +24,7 @@ lb config noauto \
   --binary-images iso-hybrid \
   --debian-installer false \
   --archive-areas "main contrib non-free non-free-firmware" \
-  --linux-packages "linux-image" \
+  --linux-packages "none" \
   --linux-flavours "$THINCLIENT_LINUX_FLAVOUR" \
   --firmware-chroot true \
   --firmware-binary true \

@@ -1,10 +1,10 @@
 [Unit]
-Description=Watch Proxmox UI files and reapply PVE DCV Integration after updates
+Description=Watch Proxmox UI files and reapply Beagle OS after updates
 
 [Path]
 PathChanged=/usr/share/pve-manager/index.html.tpl
 PathChanged=/usr/share/pve-manager/js/pvemanagerlib.js
-Unit=pve-dcv-ui-reapply.service
+Unit=beagle-ui-reapply.service
 
 [Install]
 WantedBy=multi-user.target

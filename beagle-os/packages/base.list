@@ -1,0 +1,47 @@
+# Core OS
+systemd-sysv
+dbus
+sudo
+ca-certificates
+curl
+vim-tiny
+jq
+python3
+python3-venv
+
+# Boot and storage
+grub-efi-amd64-bin
+grub2-common
+initramfs-tools
+linux-base
+dosfstools
+e2fsprogs
+
+# Network and remote access
+iproute2
+iputils-ping
+network-manager
+qemu-guest-agent
+openssh-server
+wpasupplicant
+
+# Thin client desktop foundation
+xserver-xorg-core
+xserver-xorg-input-libinput
+xserver-xorg-video-fbdev
+xserver-xorg-video-vesa
+xserver-xorg-video-dummy
+xinit
+xterm
+openbox
+feh
+dbus-x11
+x11-xserver-utils
+xauth
+xfonts-base
+xfonts-terminus
+pulseaudio
+mesa-utils
+pciutils
+usbutils
+htop

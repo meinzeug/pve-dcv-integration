@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+should_autostart_x11() {
+  [ -z "${SSH_CONNECTION:-}" ] || return 1
+  [ -z "${DISPLAY:-}" ] || return 1
+  [ "${BEAGLE_NO_AUTO_X11:-0}" != "1" ] || return 1
+
+  current_tty="$(tty 2>/dev/null || true)"
+  [ "${current_tty}" = "/dev/tty1" ]
+}
+
+if [ "${1:-}" = "-c" ]; then
+  exec /bin/bash "$@"
+fi
+
+if [ "$#" -gt 0 ]; then
+  set --
+fi
+
+if should_autostart_x11; then
+  /usr/local/bin/beagle-start-x11 || true
+fi
+
+exec /bin/bash --login

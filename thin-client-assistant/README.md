@@ -1,22 +1,27 @@
 # Thin-Client Assistant
 
-This directory contains the first deployment-oriented baseline for turning a Linux device into a dedicated Proxmox thin client.
+This directory contains the deployment-oriented endpoint path for Beagle OS.
+It turns a Linux device or installer image into a dedicated Moonlight thin client that is bound to a Proxmox-managed Sunshine VM.
 
 ## Structure
 
 - `installer/` installation and setup menu scripts
 - `runtime/` launch and preparation scripts
-- `systemd/` system service unit
-- `templates/` config and autostart templates
-- `examples/` sample configuration files
+- `systemd/` system service units
+- `templates/` runtime config and autostart templates
+- `examples/` sample profile fragments
 - `usb/` USB writer, live installer menu and local-disk installer
 - `live-build/` bootable installer image definition
 
-## Supported modes
+## Runtime model
 
-- `SPICE` via `remote-viewer`
-- `NOVNC` via Chromium kiosk mode
-- `DCV` via native `dcvviewer`
+The assistant is intentionally single-purpose:
+
+- `Proxmox` supplies the VM binding and profile metadata
+- `Sunshine` runs inside the streamed VM
+- `Moonlight` runs on the endpoint
+
+The runtime launcher validates that the selected mode is `MOONLIGHT` and then starts the configured Sunshine app.
 
 ## Install
 
@@ -32,9 +37,17 @@ The standalone writer script can be started as a normal user:
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh
 ```
 
-It escalates to `sudo` only for partitioning and writing the selected USB device. If it is executed outside the repository, prefer the host-provided per-VM standalone script from `https://<proxmox-host>:8443/pve-dcv-downloads/`, which already knows the matching local payload URL and can embed a bundled VM preset into the USB stick.
+It escalates to `sudo` only for partitioning and writing the selected USB device.
+For operator rollouts, prefer the host-provided per-VM installer from:
+
+```text
+https://<proxmox-host>:8443/beagle-downloads/pve-thin-client-usb-installer-vm-<vmid>.sh
+```
+
+That installer already knows the matching payload URL and embeds the VM-specific Beagle profile directly into the USB medium.
 When a graphical desktop is available, the writer prefers a GUI selection flow, and the generated live media boots into a graphical installer dashboard instead of a plain text-only menu.
-It can also show candidate targets up front:
+
+List candidate targets before writing:
 
 ```bash
 ./thin-client-assistant/usb/pve-thin-client-usb-installer.sh --list-devices
@@ -48,15 +61,14 @@ The installer writes:
 
 `/etc/pve-thin-client/thinclient.conf`
 
-## Important note about DCV
+A profile typically includes:
 
-The generic in-place installer still expects a working `dcvviewer` binary on the target system. The bootable live installer path now installs NICE DCV Viewer into the generated image automatically.
+- Proxmox host, node and VMID
+- Sunshine host and API URL
+- Moonlight app, codec, decoder, bitrate and FPS
+- Sunshine credentials or pairing PIN when unattended startup is desired
 
-## Proxmox-backed SPICE mode
+## Operational note
 
-`SPICE` can now operate in two ways:
-
-- direct URL / `.vv` target
-- Proxmox API ticket mode with stored Proxmox host, node, VMID and credentials
-
-The Proxmox ticket path generates a fresh `.vv` file on each launch and starts `remote-viewer` automatically.
+A Beagle endpoint is not meant to behave like a generic workstation.
+It is expected to boot straight into the assigned Moonlight session and stay aligned with the Proxmox VM profile that generated it.

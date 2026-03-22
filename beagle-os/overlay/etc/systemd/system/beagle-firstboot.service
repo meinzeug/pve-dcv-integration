@@ -1,0 +1,13 @@
+[Unit]
+Description=Beagle OS first boot initialization
+After=network-pre.target
+Before=multi-user.target
+ConditionPathExists=!/etc/beagle-os/initialized
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/beagle-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

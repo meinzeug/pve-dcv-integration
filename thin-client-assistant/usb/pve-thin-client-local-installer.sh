@@ -47,7 +47,7 @@ PROXMOX_API_PASSWORD=""
 PROXMOX_API_NODE=""
 PROXMOX_API_VMID=""
 
-MODE=""
+MODE="${MODE:-MOONLIGHT}"
 CONNECTION_METHOD=""
 PROFILE_NAME="default"
 RUNTIME_USER="thinclient"
@@ -1621,7 +1621,7 @@ boot_ip_arg() {
 write_grub_cfg() {
   local root_uuid="$1"
   local ip_arg
-  local irq_args_default="irqpoll pci=nomsi noapic"
+  local irq_args_default=""
   local irq_args_safe="nomodeset irqpoll pci=nomsi noapic"
   local irq_args_legacy="nomodeset irqpoll noapic nolapic"
   ip_arg="$(boot_ip_arg)"

@@ -8,7 +8,7 @@ INSTALL_ROOT="/usr/local/lib/pve-thin-client"
 BIN_DIR="/usr/local/bin"
 AUTOSTART_DIR="/etc/xdg/autostart"
 SYSTEMD_DIR="/etc/systemd/system"
-MODE=""
+MODE="${MODE:-MOONLIGHT}"
 CONNECTION_METHOD=""
 PROFILE_NAME="default"
 RUNTIME_USER="thinclient"
@@ -20,17 +20,10 @@ NETWORK_STATIC_ADDRESS=""
 NETWORK_STATIC_PREFIX="24"
 NETWORK_GATEWAY=""
 NETWORK_DNS_SERVERS="1.1.1.1 8.8.8.8"
-SPICE_URL=""
-NOVNC_URL=""
-DCV_URL=""
 MOONLIGHT_HOST=""
 MOONLIGHT_APP="Desktop"
-REMOTE_VIEWER_BIN="remote-viewer"
-BROWSER_BIN="chromium"
-BROWSER_FLAGS="--kiosk --incognito --no-first-run --disable-session-crashed-bubble"
-DCV_VIEWER_BIN="dcvviewer"
 MOONLIGHT_BIN="moonlight"
-MOONLIGHT_RESOLUTION="1080"
+MOONLIGHT_RESOLUTION="auto"
 MOONLIGHT_FPS="60"
 MOONLIGHT_BITRATE="20000"
 MOONLIGHT_VIDEO_CODEC="H.264"
@@ -55,7 +48,7 @@ SUNSHINE_PIN=""
 
 usage() {
   cat <<EOF
-Usage: $0 [--mode SPICE|NOVNC|DCV|MOONLIGHT] [--runtime-user USER] [--spice-url URL] [--novnc-url URL] [--dcv-url URL] [--moonlight-host HOST] [--browser-bin PATH]
+Usage: $0 [--mode MOONLIGHT] [--runtime-user USER] [--moonlight-host HOST] [--moonlight-app APP] [--sunshine-api-url URL]
 EOF
 }
 
@@ -93,15 +86,8 @@ parse_args() {
       --network-prefix) NETWORK_STATIC_PREFIX="$2"; shift 2 ;;
       --network-gateway) NETWORK_GATEWAY="$2"; shift 2 ;;
       --network-dns) NETWORK_DNS_SERVERS="$2"; shift 2 ;;
-      --spice-url) SPICE_URL="$2"; shift 2 ;;
-      --novnc-url) NOVNC_URL="$2"; shift 2 ;;
-      --dcv-url) DCV_URL="$2"; shift 2 ;;
       --moonlight-host) MOONLIGHT_HOST="$2"; shift 2 ;;
       --moonlight-app) MOONLIGHT_APP="$2"; shift 2 ;;
-      --remote-viewer-bin) REMOTE_VIEWER_BIN="$2"; shift 2 ;;
-      --browser-bin) BROWSER_BIN="$2"; shift 2 ;;
-      --browser-flags) BROWSER_FLAGS="$2"; shift 2 ;;
-      --dcv-viewer-bin) DCV_VIEWER_BIN="$2"; shift 2 ;;
       --moonlight-bin) MOONLIGHT_BIN="$2"; shift 2 ;;
       --moonlight-resolution) MOONLIGHT_RESOLUTION="$2"; shift 2 ;;
       --moonlight-fps) MOONLIGHT_FPS="$2"; shift 2 ;;
@@ -150,15 +136,8 @@ load_answers() {
     NETWORK_STATIC_PREFIX="$NETWORK_STATIC_PREFIX" \
     NETWORK_GATEWAY="$NETWORK_GATEWAY" \
     NETWORK_DNS_SERVERS="$NETWORK_DNS_SERVERS" \
-    SPICE_URL="$SPICE_URL" \
-    NOVNC_URL="$NOVNC_URL" \
-    DCV_URL="$DCV_URL" \
     MOONLIGHT_HOST="$MOONLIGHT_HOST" \
     MOONLIGHT_APP="$MOONLIGHT_APP" \
-    REMOTE_VIEWER_BIN="$REMOTE_VIEWER_BIN" \
-    BROWSER_BIN="$BROWSER_BIN" \
-    BROWSER_FLAGS="$BROWSER_FLAGS" \
-    DCV_VIEWER_BIN="$DCV_VIEWER_BIN" \
     MOONLIGHT_BIN="$MOONLIGHT_BIN" \
     MOONLIGHT_RESOLUTION="$MOONLIGHT_RESOLUTION" \
     MOONLIGHT_FPS="$MOONLIGHT_FPS" \
@@ -194,8 +173,6 @@ install_runtime_assets() {
   cp -a "$ROOT_DIR/templates" "$INSTALL_ROOT/"
   copy_file "$ROOT_DIR/runtime/launch-session.sh" "$INSTALL_ROOT/launch-session.sh"
   copy_file "$ROOT_DIR/runtime/prepare-runtime.sh" "$INSTALL_ROOT/prepare-runtime.sh"
-  copy_file "$ROOT_DIR/runtime/connect-proxmox-spice.sh" "$INSTALL_ROOT/connect-proxmox-spice.sh"
-  copy_file "$ROOT_DIR/runtime/build-dcv-connection-file.sh" "$INSTALL_ROOT/build-dcv-connection-file.sh"
   copy_file "$ROOT_DIR/runtime/launch-moonlight.sh" "$INSTALL_ROOT/launch-moonlight.sh"
   copy_file "$ROOT_DIR/runtime/common.sh" "$INSTALL_ROOT/common.sh"
   copy_file "$ROOT_DIR/runtime/apply-network-config.sh" "$INSTALL_ROOT/apply-network-config.sh"
@@ -221,15 +198,8 @@ write_config() {
   NETWORK_STATIC_PREFIX="$NETWORK_STATIC_PREFIX" \
   NETWORK_GATEWAY="$NETWORK_GATEWAY" \
   NETWORK_DNS_SERVERS="$NETWORK_DNS_SERVERS" \
-  SPICE_URL="$SPICE_URL" \
-  NOVNC_URL="$NOVNC_URL" \
-  DCV_URL="$DCV_URL" \
   MOONLIGHT_HOST="$MOONLIGHT_HOST" \
   MOONLIGHT_APP="$MOONLIGHT_APP" \
-  REMOTE_VIEWER_BIN="$REMOTE_VIEWER_BIN" \
-  BROWSER_BIN="$BROWSER_BIN" \
-  BROWSER_FLAGS="$BROWSER_FLAGS" \
-  DCV_VIEWER_BIN="$DCV_VIEWER_BIN" \
   MOONLIGHT_BIN="$MOONLIGHT_BIN" \
   MOONLIGHT_RESOLUTION="$MOONLIGHT_RESOLUTION" \
   MOONLIGHT_FPS="$MOONLIGHT_FPS" \
@@ -266,15 +236,6 @@ ensure_user_exists() {
 
 install_packages_hint() {
   case "$MODE" in
-    SPICE)
-      echo "Suggested package: virt-viewer"
-      ;;
-    NOVNC)
-      echo "Suggested package: chromium or chromium-browser"
-      ;;
-    DCV)
-      echo "Install the NICE DCV Viewer package so 'dcvviewer' is available."
-      ;;
     MOONLIGHT)
       echo "Suggested package or wrapper: moonlight"
       ;;
@@ -303,6 +264,10 @@ EOF
 
 require_root
 parse_args "$@"
+if [[ "$MODE" != "MOONLIGHT" ]]; then
+  echo "Beagle OS supports only --mode MOONLIGHT." >&2
+  exit 1
+fi
 load_answers
 install_runtime_assets
 write_config

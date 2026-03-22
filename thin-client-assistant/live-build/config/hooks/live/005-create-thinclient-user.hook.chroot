@@ -4,6 +4,7 @@ set -e
 THINCLIENT_USER="thinclient"
 THINCLIENT_HOME="/home/${THINCLIENT_USER}"
 THINCLIENT_SHELL="/usr/local/bin/pve-thin-client-login-shell"
+THINCLIENT_PASSWORD="thinclient"
 
 if ! id "${THINCLIENT_USER}" >/dev/null 2>&1; then
   useradd -m -s "${THINCLIENT_SHELL}" -G audio,video,plugdev,users,netdev "${THINCLIENT_USER}"
@@ -11,5 +12,5 @@ else
   usermod -s "${THINCLIENT_SHELL}" "${THINCLIENT_USER}"
 fi
 
-passwd -d "${THINCLIENT_USER}" >/dev/null 2>&1 || true
+printf '%s:%s\n' "${THINCLIENT_USER}" "${THINCLIENT_PASSWORD}" | chpasswd
 install -d -m 0755 -o "${THINCLIENT_USER}" -g "${THINCLIENT_USER}" "${THINCLIENT_HOME}"

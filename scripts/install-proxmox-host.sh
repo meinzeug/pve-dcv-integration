@@ -2,16 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-INSTALL_DIR="${INSTALL_DIR:-/opt/pve-dcv-integration}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/beagle}"
 VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION")"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
 LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
-DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/beagle-downloads}"
 DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
 DEFAULT_USB_INSTALLER_URL="https://{host}:${LISTEN_PORT}${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-vm-{vmid}.sh"
 USB_INSTALLER_URL="${PVE_DCV_USB_INSTALLER_URL:-$DEFAULT_USB_INSTALLER_URL}"
-CONFIG_DIR="${PVE_DCV_CONFIG_DIR:-/etc/pve-dcv-integration}"
-GITHUB_REPO="${GITHUB_REPO:-meinzeug/pve-dcv-integration}"
+CONFIG_DIR="${PVE_DCV_CONFIG_DIR:-/etc/beagle}"
+GITHUB_REPO="${GITHUB_REPO:-meinzeug/beagle-os}"
 DEFAULT_PROXMOX_USERNAME="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_USERNAME:-${PVE_DCV_PROXMOX_USERNAME:-}}"
 DEFAULT_PROXMOX_PASSWORD="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_PASSWORD:-${PVE_DCV_PROXMOX_PASSWORD:-}}"
 DEFAULT_PROXMOX_TOKEN="${PVE_THIN_CLIENT_DEFAULT_PROXMOX_TOKEN:-${PVE_DCV_PROXMOX_TOKEN:-}}"
@@ -79,8 +79,8 @@ disable_proxmox_enterprise_repo() {
 
   while IFS= read -r file; do
     grep -q 'enterprise.proxmox.com' "$file" || continue
-    cp "$file" "$file.pve-dcv-backup"
-    awk '!/enterprise\.proxmox\.com/' "$file.pve-dcv-backup" > "$file"
+    cp "$file" "$file.beagle-backup"
+    awk '!/enterprise\.proxmox\.com/' "$file.beagle-backup" > "$file"
     found=1
   done < <(find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' \) 2>/dev/null)
 
@@ -91,9 +91,9 @@ restore_proxmox_enterprise_repo() {
   local backup original
 
   while IFS= read -r backup; do
-    original="${backup%.pve-dcv-backup}"
+    original="${backup%.beagle-backup}"
     mv "$backup" "$original"
-  done < <(find /etc/apt -maxdepth 2 -type f -name '*.pve-dcv-backup' 2>/dev/null)
+  done < <(find /etc/apt -maxdepth 2 -type f -name '*.beagle-backup' 2>/dev/null)
 }
 
 apt_update_with_proxmox_fallback() {
@@ -170,7 +170,7 @@ if [[ -d /usr/share/pve-manager/js ]]; then
   PVE_DCV_PROXY_LISTEN_PORT="$LISTEN_PORT" \
   PVE_DCV_DOWNLOADS_PATH="$DOWNLOADS_PATH" \
   PVE_DCV_DOWNLOADS_BASE_URL="$DOWNLOADS_BASE_URL" \
-  "$INSTALL_DIR/scripts/install-proxmox-dcv-proxy.sh"
+  "$INSTALL_DIR/scripts/install-beagle-proxy.sh"
 fi
 
 echo "Installed project assets to $INSTALL_DIR"

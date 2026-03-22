@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+missing=""
+required_packages="
+alsa-utils
+libasound2-plugins
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+mesa-vulkan-drivers
+pciutils
+firmware-amd-graphics
+firmware-sof-signed
+xserver-xorg-video-amdgpu
+xserver-xorg-video-intel
+xserver-xorg-video-vesa
+"
+
+for package in $required_packages; do
+  if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
+    missing="$missing $package"
+  fi
+done
+
+if [ -n "$missing" ]; then
+  echo "Missing required runtime packages in thin-client image:$missing" >&2
+  exit 1
+fi
+
+if [ ! -d /lib/firmware/amdgpu ] || [ -z "$(ls -A /lib/firmware/amdgpu 2>/dev/null)" ]; then
+  echo "Missing AMD firmware payload (/lib/firmware/amdgpu) in thin-client image." >&2
+  exit 1
+fi

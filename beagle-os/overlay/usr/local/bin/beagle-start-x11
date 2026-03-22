@@ -1,0 +1,74 @@
+#!/bin/sh
+set -eu
+
+LOG_DIR="${BEAGLE_X11_LOG_DIR:-/var/log/beagle-os}"
+LOG_FILE=""
+
+setup_logging() {
+  for candidate in \
+    "$LOG_DIR" \
+    "/tmp/beagle-os-logs" \
+    "${XDG_RUNTIME_DIR:-/run/user/1000}/beagle-os" \
+    "/home/thinclient/.cache/beagle-os"
+  do
+    [ -n "$candidate" ] || continue
+    if mkdir -p "$candidate" >/dev/null 2>&1 && touch "$candidate/start-x11.log" >/dev/null 2>&1; then
+      chmod 0644 "$candidate/start-x11.log" >/dev/null 2>&1 || true
+      LOG_DIR="$candidate"
+      LOG_FILE="$candidate/start-x11.log"
+      exec >>"$LOG_FILE" 2>&1
+      return 0
+    fi
+  done
+  return 1
+}
+
+setup_logging || true
+
+wait_for_graphics() {
+  timeout="${BEAGLE_DRI_WAIT_SECONDS:-20}"
+  counter=0
+
+  if [ -e /dev/dri/card0 ] || [ -e /dev/dri/renderD128 ]; then
+    return 0
+  fi
+
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm settle --timeout="$timeout" >/dev/null 2>&1 || true
+  fi
+
+  while [ "$counter" -lt "$timeout" ]; do
+    if [ -e /dev/dri/card0 ] || [ -e /dev/dri/renderD128 ]; then
+      return 0
+    fi
+    sleep 1
+    counter=$((counter + 1))
+  done
+
+  return 0
+}
+
+clear_stale_x_locks() {
+  rm -f /tmp/.X0-lock >/dev/null 2>&1 || true
+  rm -f /tmp/.X11-unix/X0 >/dev/null 2>&1 || true
+}
+
+launch_x_once() {
+  startx /usr/local/bin/start-beagle-session -- :0 vt1 -keeptty -nolisten tcp
+}
+
+wait_for_graphics
+clear_stale_x_locks
+
+attempt=1
+while [ "$attempt" -le 2 ]; do
+  if launch_x_once; then
+    exit 0
+  fi
+  status=$?
+  clear_stale_x_locks
+  attempt=$((attempt + 1))
+  sleep 1
+done
+
+exit "$status"

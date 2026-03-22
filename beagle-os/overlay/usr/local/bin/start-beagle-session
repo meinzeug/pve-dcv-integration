@@ -1,0 +1,52 @@
+#!/bin/sh
+set -eu
+
+DEFAULT_LOG_ROOT="${XDG_RUNTIME_DIR:-$HOME/.cache}/beagle-os"
+LOG_ROOT="${BEAGLE_LOG_ROOT:-$DEFAULT_LOG_ROOT}"
+LOG_DIR="${BEAGLE_LOG_DIR:-$LOG_ROOT/session}"
+RUNTIME_LOG="$LOG_DIR/moonlight-session.log"
+FONTCONFIG_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/fontconfig"
+
+mkdir -p "$LOG_DIR"
+chmod 0700 "$LOG_DIR" >/dev/null 2>&1 || true
+mkdir -p "$FONTCONFIG_CACHE_DIR" >/dev/null 2>&1 || true
+
+export PVE_THIN_CLIENT_LOG_DIR="$LOG_DIR"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+export FONTCONFIG_PATH="${FONTCONFIG_PATH:-/etc/fonts}"
+export FONTCONFIG_FILE="${FONTCONFIG_FILE:-/etc/fonts/fonts.conf}"
+export FONTCONFIG_CACHE="$FONTCONFIG_CACHE_DIR"
+
+if command -v xsetroot >/dev/null 2>&1; then
+  xsetroot -solid "#0f1720" >/dev/null 2>&1 || true
+fi
+
+if command -v feh >/dev/null 2>&1 && [ -f /usr/local/share/beagle-os/beagleos.png ]; then
+  feh --no-fehbg --bg-fill /usr/local/share/beagle-os/beagleos.png >/dev/null 2>&1 || true
+fi
+
+if command -v xset >/dev/null 2>&1; then
+  xset -dpms >/dev/null 2>&1 || true
+  xset s off >/dev/null 2>&1 || true
+  xset s noblank >/dev/null 2>&1 || true
+fi
+
+if command -v openbox >/dev/null 2>&1; then
+  openbox >"$LOG_DIR/openbox.log" 2>&1 &
+fi
+
+if [ -f /etc/pve-thin-client/thinclient.conf ]; then
+  # shellcheck disable=SC1091
+  . /etc/pve-thin-client/thinclient.conf
+fi
+
+if [ "${PVE_THIN_CLIENT_AUTOSTART:-0}" = "1" ] && [ -n "${PVE_THIN_CLIENT_MOONLIGHT_HOST:-}" ]; then
+  exec /usr/local/lib/pve-thin-client/runtime/launch-session.sh >>"$RUNTIME_LOG" 2>&1
+fi
+
+if command -v xterm >/dev/null 2>&1; then
+  exec xterm -geometry 120x32+40+40 -T "Beagle OS" -fa Monospace -fs 11 -fg white -bg black -hold \
+    -e /bin/sh -lc "echo 'Beagle OS is waiting for a Moonlight target.'; echo; echo 'Edit /etc/beagle-os/endpoint.env and run:'; echo '  sudo beagle-render-config'; echo; echo 'Current endpoint file:'; sed -n '1,200p' /etc/beagle-os/endpoint.env 2>/dev/null || true; echo; exec /bin/bash"
+fi
+
+exec /bin/bash

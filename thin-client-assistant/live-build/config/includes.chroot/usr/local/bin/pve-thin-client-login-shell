@@ -1,12 +1,31 @@
 #!/bin/sh
 set -eu
 
-TTY_PATH="$(tty 2>/dev/null || true)"
 BOOT_MODE="$("/usr/local/bin/pve-thin-client-boot-mode" 2>/dev/null || printf 'installer')"
 export PVE_THIN_CLIENT_BOOT_MODE="${BOOT_MODE}"
 
-if [ -z "${DISPLAY:-}" ] && [ "${TTY_PATH}" = "/dev/tty1" ]; then
-  exec /usr/local/bin/pve-thin-client-start-x11
+# Preserve SSH remote-command behavior (shell gets called with "-c <cmd>").
+if [ "${1:-}" = "-c" ]; then
+  exec /bin/bash "$@"
+fi
+
+should_autostart_x11() {
+  [ "${BOOT_MODE}" = "runtime" ] || return 1
+  [ -z "${SSH_CONNECTION:-}" ] || return 1
+  [ -z "${DISPLAY:-}" ] || return 1
+  [ "${PVE_THIN_CLIENT_NO_AUTO_X11:-0}" != "1" ] || return 1
+
+  current_tty="$(tty 2>/dev/null || true)"
+  [ "${current_tty}" = "/dev/tty1" ]
+}
+
+# Ignore non-command login flags; keep local autostart behavior deterministic.
+if [ "$#" -gt 0 ]; then
+  set --
+fi
+
+if should_autostart_x11; then
+  /usr/local/bin/pve-thin-client-start-x11 || true
 fi
 
 exec /bin/bash --login

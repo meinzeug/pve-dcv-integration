@@ -1,11 +1,11 @@
 [Unit]
-Description=Refresh PVE DCV Integration hosted artifacts
+Description=Refresh Beagle OS hosted artifacts
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-EnvironmentFile=-/etc/pve-dcv-integration/host.env
+EnvironmentFile=-/etc/beagle/host.env
 ExecStart=__INSTALL_DIR__/scripts/refresh-host-artifacts.sh
 WorkingDirectory=__INSTALL_DIR__
 

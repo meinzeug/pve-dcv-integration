@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import json
+import logging
 import os
 import shlex
 import shutil
 import subprocess
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +18,20 @@ FALLBACK_MENU = SCRIPT_DIR / "pve-thin-client-live-menu.sh"
 ASSET_DIR = SCRIPT_DIR / "assets"
 HOST = "127.0.0.1"
 PORT = 37999
+LOG_DIR = Path(os.environ.get("PVE_THIN_CLIENT_LOG_DIR", "/tmp/pve-thin-client-logs"))
+LOG_FILE = LOG_DIR / "installer-ui.log"
+
+
+def setup_logging() -> None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        filename=LOG_FILE,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+
+
+setup_logging()
 
 HTML = """<!doctype html>
 <html lang="de">
@@ -373,6 +389,7 @@ HTML = """<!doctype html>
 
     function renderState() {
       const preset = state.preset || {};
+      const debug = state.debug || {};
       const disks = state.disks || [];
       const modes = preset.available_modes || [];
 
@@ -380,7 +397,7 @@ HTML = """<!doctype html>
       document.getElementById("vm-hint").textContent =
         preset.preset_active
           ? "Dieses Medium ist bereits an eine VM gebunden. Weitere Zugangsdaten sind nicht noetig."
-          : "Kein gebuendeltes VM-Preset gefunden. Das Medium faellt auf den klassischen Textpfad zurueck.";
+          : `Kein gebuendeltes VM-Preset gefunden. Quelle: ${debug.preset_source || "unbekannt"}, Datei: ${debug.preset_file || "n/a"}, Logs: ${state.log_dir || "/tmp/pve-thin-client-logs"}`;
       document.getElementById("meta-host").textContent = preset.proxmox_host || "n/a";
       document.getElementById("meta-node").textContent =
         preset.proxmox_node && preset.proxmox_vmid ? `${preset.proxmox_node} / ${preset.proxmox_vmid}` : "n/a";
@@ -460,6 +477,7 @@ HTML = """<!doctype html>
     document.getElementById("reload-btn").addEventListener("click", () => loadState().catch((error) => setStatus(error.message, true)));
     document.getElementById("preset-btn").addEventListener("click", () => {
       const preset = state?.preset || {};
+      const debug = state?.debug || {};
       const lines = [
         `VM: ${preset.vm_name || preset.profile_name || "n/a"}`,
         `Host: ${preset.proxmox_host || "n/a"}`,
@@ -468,7 +486,11 @@ HTML = """<!doctype html>
         `Modi: ${(preset.available_modes || []).join(" ") || "keine"}`,
         `Default: ${preset.default_mode || "n/a"}`,
         `Moonlight Host: ${preset.moonlight_host || "n/a"}`,
-        `Moonlight App: ${preset.moonlight_app || "n/a"}`
+        `Moonlight App: ${preset.moonlight_app || "n/a"}`,
+        `Preset Quelle: ${debug.preset_source || "n/a"}`,
+        `Preset Datei: ${debug.preset_file || "n/a"}`,
+        `Cache Datei: ${debug.cached_preset_file || "n/a"}`,
+        `Logs: ${state?.log_dir || "/tmp/pve-thin-client-logs"}`
       ];
       window.alert(lines.join("\\n"));
     });
@@ -483,16 +505,63 @@ HTML = """<!doctype html>
 
 
 def run_json_command(*args):
-    result = subprocess.run(args, capture_output=True, text=True)
+    command = list(args)
+    if command and Path(command[0]) == LOCAL_INSTALLER and os.geteuid() != 0 and shutil.which("sudo"):
+        command = [
+            "sudo",
+            "-n",
+            "env",
+            f"PVE_THIN_CLIENT_LOG_DIR={LOG_DIR}",
+            f"PVE_THIN_CLIENT_LOG_SESSION_ID={os.environ.get('PVE_THIN_CLIENT_LOG_SESSION_ID', LOG_DIR.name)}",
+            *command,
+        ]
+    logging.info("run_json_command: %s", " ".join(shlex.quote(part) for part in command))
+    result = subprocess.run(command, capture_output=True, text=True)
+    logging.info(
+        "command result rc=%s stdout=%s stderr=%s",
+        result.returncode,
+        (result.stdout or "").strip(),
+        (result.stderr or "").strip(),
+    )
     if result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "command failed")
     return json.loads(result.stdout or "{}")
 
 
 def build_state():
-    preset = run_json_command(str(LOCAL_INSTALLER), "--print-preset-json")
+    preset = {}
+    debug = {}
+    for attempt in range(1, 16):
+        try:
+            if shutil.which("sudo") and os.geteuid() != 0:
+                subprocess.run(
+                    [
+                        "sudo",
+                        "-n",
+                        "env",
+                        f"PVE_THIN_CLIENT_LOG_DIR={LOG_DIR}",
+                        f"PVE_THIN_CLIENT_LOG_SESSION_ID={os.environ.get('PVE_THIN_CLIENT_LOG_SESSION_ID', LOG_DIR.name)}",
+                        str(LOCAL_INSTALLER),
+                        "--cache-bundled-preset",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+        except Exception as exc:
+            logging.warning("cache-bundled-preset warmup failed on attempt %s: %s", attempt, exc)
+        preset = run_json_command(str(LOCAL_INSTALLER), "--print-preset-json")
+        debug = run_json_command(str(LOCAL_INSTALLER), "--print-debug-json")
+        if preset.get("preset_active"):
+            logging.info("preset active after attempt %s: %s", attempt, preset)
+            break
+        logging.warning("preset missing on attempt %s: %s", attempt, debug)
+        if attempt < 15:
+            time.sleep(1)
     disks = run_json_command(str(LOCAL_INSTALLER), "--list-targets-json")
-    return {"ok": True, "preset": preset, "disks": disks}
+    state = {"ok": True, "preset": preset, "debug": debug, "disks": disks, "log_dir": str(LOG_DIR)}
+    logging.info("build_state: %s", state)
+    return state
 
 
 def spawn_terminal(command, title):
@@ -523,6 +592,7 @@ def spawn_terminal(command, title):
             shell_cmd,
         ]
     )
+    logging.info("spawned terminal %s with command %s", title, command)
 
 
 def install_target(mode, disk):
@@ -543,10 +613,12 @@ def install_target(mode, disk):
         ],
         f"PVE Thin Client Install {mode}",
     )
+    logging.info("requested install mode=%s disk=%s", mode, disk)
 
 
 def launch_shell():
     spawn_terminal(["bash", "--login"], "PVE Thin Client Shell")
+    logging.info("requested shell")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -586,6 +658,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 self._send_json(build_state())
             except Exception as exc:  # noqa: BLE001
+                logging.exception("failed to build UI state")
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
@@ -621,6 +694,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_error(HTTPStatus.NOT_FOUND)
         except Exception as exc:  # noqa: BLE001
+            logging.exception("POST handler failed for %s", parsed.path)
             self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def log_message(self, _format, *_args):
@@ -628,6 +702,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def fallback_to_tui():
+    logging.warning("falling back to TUI menu")
     os.execv(str(FALLBACK_MENU), [str(FALLBACK_MENU)])
 
 
@@ -635,6 +710,7 @@ def main():
     if not LOCAL_INSTALLER.is_file() or not FALLBACK_MENU.is_file():
         raise SystemExit("Installer UI dependencies are missing.")
 
+    logging.info("starting installer UI display=%s", os.environ.get("DISPLAY", ""))
     browser = shutil.which("chromium") or shutil.which("chromium-browser")
     if not browser or not os.environ.get("DISPLAY"):
         fallback_to_tui()
@@ -658,6 +734,7 @@ def main():
             check=False,
         )
     finally:
+        logging.info("shutting down installer UI")
         server.shutdown()
         server.server_close()
 

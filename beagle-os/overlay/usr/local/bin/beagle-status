@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ENDPOINT_FILE="/etc/beagle-os/endpoint.env"
+HEALTH_FILE="/var/lib/beagle-os/health.status"
+RUNTIME_STATUS_FILE="/var/lib/pve-thin-client/runtime.status"
+LAUNCH_STATUS_FILE="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pve-thin-client/launch.status.json"
+
+read_shell_var() {
+  local file="$1"
+  local key="$2"
+  [[ -r "$file" ]] || return 1
+  awk -F= -v wanted="$key" '
+    $1 == wanted {
+      value = substr($0, index($0, "=") + 1)
+      sub(/^"/, "", value)
+      sub(/"$/, "", value)
+      print value
+      exit
+    }
+  ' "$file"
+}
+
+read_json_value() {
+  local file="$1"
+  local key="$2"
+  [[ -r "$file" ]] || return 1
+  python3 - "$file" "$key" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+
+try:
+    data = json.loads(path.read_text())
+except Exception:
+    raise SystemExit(1)
+
+value = data.get(key, "")
+if value is None:
+    value = ""
+print(value)
+PY
+}
+
+line() {
+  printf '%-20s %s\n' "$1" "$2"
+}
+
+profile_name="$(read_shell_var "$ENDPOINT_FILE" "BEAGLE_ENDPOINT_PROFILE_NAME" || true)"
+moonlight_host="$(read_shell_var "$ENDPOINT_FILE" "BEAGLE_ENDPOINT_MOONLIGHT_HOST" || true)"
+moonlight_app="$(read_shell_var "$ENDPOINT_FILE" "BEAGLE_ENDPOINT_MOONLIGHT_APP" || true)"
+autostart="$(read_shell_var "$ENDPOINT_FILE" "BEAGLE_ENDPOINT_AUTOSTART" || true)"
+health_route="$(read_shell_var "$HEALTH_FILE" "default_route" || true)"
+health_ip="$(read_shell_var "$HEALTH_FILE" "ip_summary" || true)"
+health_ping="$(read_shell_var "$HEALTH_FILE" "moonlight_target_reachable" || true)"
+health_sunshine="$(read_shell_var "$HEALTH_FILE" "sunshine_api_reachable" || true)"
+prepare_state="$(read_shell_var "$HEALTH_FILE" "prepare_state" || true)"
+autologin_state="$(read_shell_var "$HEALTH_FILE" "autologin_state" || true)"
+guest_agent_state="$(read_shell_var "$HEALTH_FILE" "guest_agent_state" || true)"
+runtime_binary="$(read_shell_var "$RUNTIME_STATUS_FILE" "required_binary" || true)"
+runtime_binary_ok="$(read_shell_var "$RUNTIME_STATUS_FILE" "binary_available" || true)"
+launch_mode="$(read_json_value "$LAUNCH_STATUS_FILE" "mode" || true)"
+launch_target="$(read_json_value "$LAUNCH_STATUS_FILE" "target" || true)"
+launch_time="$(read_json_value "$LAUNCH_STATUS_FILE" "timestamp" || true)"
+
+line "Beagle OS" "$(hostname)"
+line "Profile" "${profile_name:-default}"
+line "Autostart" "${autostart:-0}"
+line "Moonlight Host" "${moonlight_host:-UNSET}"
+line "Moonlight App" "${moonlight_app:-Desktop}"
+line "Prepare Service" "${prepare_state:-unknown}"
+line "Autologin" "${autologin_state:-unknown}"
+line "Guest Agent" "${guest_agent_state:-unknown}"
+line "Runtime Binary" "${runtime_binary:-moonlight} (${runtime_binary_ok:-0})"
+line "Target Ping" "${health_ping:-0}"
+line "Sunshine API" "${health_sunshine:-0}"
+line "Default Route" "${health_route:-UNSET}"
+line "IP Summary" "${health_ip:-UNSET}"
+line "Last Launch" "${launch_mode:-none}"
+line "Launch Target" "${launch_target:-UNSET}"
+line "Launch Time" "${launch_time:-UNSET}"

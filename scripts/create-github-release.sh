@@ -8,6 +8,22 @@ TAG="v${VERSION}"
 REPO="${GITHUB_REPO:-meinzeug/beagle-os}"
 TITLE="${RELEASE_TITLE:-$TAG}"
 NOTES_FILE="${RELEASE_NOTES_FILE:-}"
+BEAGLE_OS_DIST_DIR="${BEAGLE_OS_DIST_DIR:-$DIST_DIR/beagle-os}"
+INCLUDE_BEAGLE_OS_ASSETS="${INCLUDE_BEAGLE_OS_ASSETS:-1}"
+
+collect_beagle_os_release_assets() {
+  local path
+  [[ "$INCLUDE_BEAGLE_OS_ASSETS" == "1" ]] || return 0
+  [[ -d "$BEAGLE_OS_DIST_DIR" ]] || return 0
+
+  while IFS= read -r path; do
+    RELEASE_ASSETS+=("$path")
+  done < <(
+    find "$BEAGLE_OS_DIST_DIR" -maxdepth 1 -type f \
+      \( -name '*.qcow2' -o -name '*.raw' -o -name '*.deb' -o -name '*.txt' \) \
+      | sort
+  )
+}
 
 require_tool() {
   local tool="$1"
@@ -36,15 +52,19 @@ require_tool gh
 require_clean_tree
 RUN_PACKAGE=1 "$ROOT_DIR/scripts/validate-project.sh"
 
-for asset in \
-  "$DIST_DIR/pve-dcv-integration-extension-$TAG.zip" \
-  "$DIST_DIR/pve-dcv-thin-client-assistant-$TAG.tar.gz" \
-  "$DIST_DIR/pve-dcv-thin-client-assistant-latest.tar.gz" \
-  "$DIST_DIR/pve-thin-client-usb-payload-$TAG.tar.gz" \
-  "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" \
-  "$DIST_DIR/pve-thin-client-usb-installer-$TAG.sh" \
-  "$DIST_DIR/pve-thin-client-usb-installer-latest.sh" \
-  "$DIST_DIR/SHA256SUMS"; do
+RELEASE_ASSETS=(
+  "$DIST_DIR/beagle-extension-$TAG.zip"
+  "$DIST_DIR/beagle-os-$TAG.tar.gz"
+  "$DIST_DIR/beagle-os-latest.tar.gz"
+  "$DIST_DIR/pve-thin-client-usb-payload-$TAG.tar.gz"
+  "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz"
+  "$DIST_DIR/pve-thin-client-usb-installer-$TAG.sh"
+  "$DIST_DIR/pve-thin-client-usb-installer-latest.sh"
+  "$DIST_DIR/SHA256SUMS"
+)
+collect_beagle_os_release_assets
+
+for asset in "${RELEASE_ASSETS[@]}"; do
   [[ -f "$asset" ]] || {
     echo "Missing release asset: $asset" >&2
     exit 1
@@ -62,27 +82,13 @@ fi
 
 if [[ -n "$NOTES_FILE" ]]; then
   gh release create "$TAG" \
-    "$DIST_DIR/pve-dcv-integration-extension-$TAG.zip" \
-    "$DIST_DIR/pve-dcv-thin-client-assistant-$TAG.tar.gz" \
-    "$DIST_DIR/pve-dcv-thin-client-assistant-latest.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-payload-$TAG.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-installer-$TAG.sh" \
-    "$DIST_DIR/pve-thin-client-usb-installer-latest.sh" \
-    "$DIST_DIR/SHA256SUMS" \
+    "${RELEASE_ASSETS[@]}" \
     --repo "$REPO" \
     --title "$TITLE" \
     --notes-file "$NOTES_FILE"
 else
   gh release create "$TAG" \
-    "$DIST_DIR/pve-dcv-integration-extension-$TAG.zip" \
-    "$DIST_DIR/pve-dcv-thin-client-assistant-$TAG.tar.gz" \
-    "$DIST_DIR/pve-dcv-thin-client-assistant-latest.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-payload-$TAG.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" \
-    "$DIST_DIR/pve-thin-client-usb-installer-$TAG.sh" \
-    "$DIST_DIR/pve-thin-client-usb-installer-latest.sh" \
-    "$DIST_DIR/SHA256SUMS" \
+    "${RELEASE_ASSETS[@]}" \
     --repo "$REPO" \
     --title "$TITLE" \
     --notes "$TAG"

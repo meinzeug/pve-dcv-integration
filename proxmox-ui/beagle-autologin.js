@@ -16,7 +16,7 @@
     var url = new URL(window.location.href);
     var changed = false;
 
-    ["pveDcvUser", "pveDcvPassword", "pveDcvAutoSubmit"].forEach(function(key) {
+    ["beagleUser", "beaglePassword", "beagleAutoSubmit"].forEach(function(key) {
       if (!url.searchParams.has(key)) return;
       url.searchParams.delete(key);
       changed = true;
@@ -35,9 +35,9 @@
 
   function run() {
     var url = new URL(window.location.href);
-    var username = url.searchParams.get("pveDcvUser") || "";
-    var password = url.searchParams.get("pveDcvPassword") || "";
-    var autoSubmit = url.searchParams.get("pveDcvAutoSubmit") !== "0";
+    var username = url.searchParams.get("beagleUser") || "";
+    var password = url.searchParams.get("beaglePassword") || "";
+    var autoSubmit = url.searchParams.get("beagleAutoSubmit") !== "0";
 
     if (!username && !password) return;
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODE="${MODE:-}"
+MODE="${MODE:-MOONLIGHT}"
 CONNECTION_METHOD="${CONNECTION_METHOD:-}"
 PROFILE_NAME="${PROFILE_NAME:-default}"
 RUNTIME_USER="${RUNTIME_USER:-thinclient}"
@@ -18,12 +18,8 @@ NOVNC_URL="${NOVNC_URL:-}"
 DCV_URL="${DCV_URL:-}"
 MOONLIGHT_HOST="${MOONLIGHT_HOST:-}"
 MOONLIGHT_APP="${MOONLIGHT_APP:-Desktop}"
-REMOTE_VIEWER_BIN="${REMOTE_VIEWER_BIN:-remote-viewer}"
-BROWSER_BIN="${BROWSER_BIN:-chromium}"
-BROWSER_FLAGS="${BROWSER_FLAGS:---kiosk --incognito --no-first-run --disable-session-crashed-bubble}"
-DCV_VIEWER_BIN="${DCV_VIEWER_BIN:-dcvviewer}"
 MOONLIGHT_BIN="${MOONLIGHT_BIN:-moonlight}"
-MOONLIGHT_RESOLUTION="${MOONLIGHT_RESOLUTION:-1080}"
+MOONLIGHT_RESOLUTION="${MOONLIGHT_RESOLUTION:-auto}"
 MOONLIGHT_FPS="${MOONLIGHT_FPS:-60}"
 MOONLIGHT_BITRATE="${MOONLIGHT_BITRATE:-20000}"
 MOONLIGHT_VIDEO_CODEC="${MOONLIGHT_VIDEO_CODEC:-H.264}"
@@ -105,18 +101,16 @@ emit_var() {
 }
 
 if [[ -z "$MODE" ]]; then
-  MODE="$(choose_numeric $'Select target mode:\n  1) Moonlight + Sunshine\n  2) SPICE\n  3) noVNC\n  4) DCV' MOONLIGHT SPICE NOVNC DCV)"
+  MODE="MOONLIGHT"
+fi
+
+if [[ "$MODE" != "MOONLIGHT" ]]; then
+  echo "Beagle OS supports only Moonlight + Sunshine." >&2
+  exit 1
 fi
 
 if [[ -z "$CONNECTION_METHOD" ]]; then
-  case "$MODE" in
-    SPICE)
-      CONNECTION_METHOD="$(choose_numeric $'Connection source:\n  1) Direct URL\n  2) Proxmox API ticket' direct proxmox-ticket)"
-      ;;
-    *)
-      CONNECTION_METHOD="direct"
-      ;;
-  esac
+  CONNECTION_METHOD="direct"
 fi
 
 PROFILE_NAME="$(prompt "Profile name" "$PROFILE_NAME")"
@@ -135,56 +129,18 @@ if [[ "$NETWORK_MODE" == "static" ]]; then
   NETWORK_DNS_SERVERS="$(prompt "DNS servers (space separated)" "$NETWORK_DNS_SERVERS")"
 fi
 
-case "$MODE" in
-  SPICE)
-    if [[ "$CONNECTION_METHOD" == "proxmox-ticket" ]]; then
-      PROXMOX_HOST="$(prompt "Proxmox host" "$PROXMOX_HOST")"
-      PROXMOX_PORT="$(prompt "Proxmox port" "$PROXMOX_PORT")"
-      PROXMOX_NODE="$(prompt "Proxmox node" "$PROXMOX_NODE")"
-      PROXMOX_VMID="$(prompt "VMID" "$PROXMOX_VMID")"
-      CONNECTION_USERNAME="$(prompt "Proxmox username" "${CONNECTION_USERNAME:-root}")"
-      PROXMOX_REALM="$(prompt "Proxmox realm" "$PROXMOX_REALM")"
-      CONNECTION_PASSWORD="$(prompt_secret "Proxmox password" "$CONNECTION_PASSWORD")"
-      PROXMOX_VERIFY_TLS="$(prompt "Verify Proxmox TLS (1/0)" "$PROXMOX_VERIFY_TLS")"
-    else
-      SPICE_URL="$(prompt "SPICE URL or .vv target" "${SPICE_URL:-spice://proxmox.example.internal:3128}")"
-      CONNECTION_USERNAME="$(prompt "Optional connection username" "$CONNECTION_USERNAME")"
-      CONNECTION_PASSWORD="$(prompt_secret "Optional connection password" "$CONNECTION_PASSWORD")"
-    fi
-    ;;
-  NOVNC)
-    NOVNC_URL="$(prompt "noVNC kiosk URL" "${NOVNC_URL:-https://proxmox.example.internal:8006/?console=kvm}")"
-    BROWSER_BIN="$(prompt "Browser binary" "$BROWSER_BIN")"
-    BROWSER_FLAGS="$(prompt "Browser flags" "$BROWSER_FLAGS")"
-    CONNECTION_USERNAME="$(prompt "Optional URL username placeholder" "$CONNECTION_USERNAME")"
-    CONNECTION_PASSWORD="$(prompt_secret "Optional URL password placeholder" "$CONNECTION_PASSWORD")"
-    CONNECTION_TOKEN="$(prompt_secret "Optional URL token placeholder" "$CONNECTION_TOKEN")"
-    ;;
-  DCV)
-    DCV_URL="$(prompt "DCV server URL or host" "${DCV_URL:-dcv://dcv-gateway.example.internal/session/example}")"
-    CONNECTION_USERNAME="$(prompt "DCV username" "$CONNECTION_USERNAME")"
-    CONNECTION_PASSWORD="$(prompt_secret "DCV password" "$CONNECTION_PASSWORD")"
-    CONNECTION_TOKEN="$(prompt_secret "Optional DCV auth token" "$CONNECTION_TOKEN")"
-    ;;
-  MOONLIGHT)
-    MOONLIGHT_HOST="$(prompt "Moonlight target host" "${MOONLIGHT_HOST:-10.10.10.100}")"
-    MOONLIGHT_APP="$(prompt "Sunshine app name" "$MOONLIGHT_APP")"
-    SUNSHINE_API_URL="$(prompt "Sunshine API URL" "${SUNSHINE_API_URL:-https://${MOONLIGHT_HOST}:47990}")"
-    SUNSHINE_USERNAME="$(prompt "Sunshine admin username" "${SUNSHINE_USERNAME:-sunshine}")"
-    SUNSHINE_PASSWORD="$(prompt_secret "Sunshine admin password" "$SUNSHINE_PASSWORD")"
-    SUNSHINE_PIN="$(prompt "Moonlight pairing PIN" "$SUNSHINE_PIN")"
-    MOONLIGHT_RESOLUTION="$(prompt "Moonlight resolution (720/1080/1440/4K/custom)" "$MOONLIGHT_RESOLUTION")"
-    MOONLIGHT_FPS="$(prompt "Moonlight FPS" "$MOONLIGHT_FPS")"
-    MOONLIGHT_BITRATE="$(prompt "Moonlight bitrate Kbps" "$MOONLIGHT_BITRATE")"
-    MOONLIGHT_VIDEO_CODEC="$(prompt "Moonlight video codec" "$MOONLIGHT_VIDEO_CODEC")"
-    MOONLIGHT_VIDEO_DECODER="$(prompt "Moonlight video decoder" "$MOONLIGHT_VIDEO_DECODER")"
-    MOONLIGHT_AUDIO_CONFIG="$(prompt "Moonlight audio config" "$MOONLIGHT_AUDIO_CONFIG")"
-    ;;
-  *)
-    echo "Unsupported mode: $MODE" >&2
-    exit 1
-    ;;
-esac
+MOONLIGHT_HOST="$(prompt "Moonlight target host" "${MOONLIGHT_HOST:-10.10.10.100}")"
+MOONLIGHT_APP="$(prompt "Sunshine app name" "$MOONLIGHT_APP")"
+SUNSHINE_API_URL="$(prompt "Sunshine API URL" "${SUNSHINE_API_URL:-https://${MOONLIGHT_HOST}:47990}")"
+SUNSHINE_USERNAME="$(prompt "Sunshine admin username" "${SUNSHINE_USERNAME:-sunshine}")"
+SUNSHINE_PASSWORD="$(prompt_secret "Sunshine admin password" "$SUNSHINE_PASSWORD")"
+SUNSHINE_PIN="$(prompt "Moonlight pairing PIN" "$SUNSHINE_PIN")"
+MOONLIGHT_RESOLUTION="$(prompt "Moonlight resolution (auto/720/1080/1440/4K/custom)" "$MOONLIGHT_RESOLUTION")"
+MOONLIGHT_FPS="$(prompt "Moonlight FPS" "$MOONLIGHT_FPS")"
+MOONLIGHT_BITRATE="$(prompt "Moonlight bitrate Kbps" "$MOONLIGHT_BITRATE")"
+MOONLIGHT_VIDEO_CODEC="$(prompt "Moonlight video codec" "$MOONLIGHT_VIDEO_CODEC")"
+MOONLIGHT_VIDEO_DECODER="$(prompt "Moonlight video decoder" "$MOONLIGHT_VIDEO_DECODER")"
+MOONLIGHT_AUDIO_CONFIG="$(prompt "Moonlight audio config" "$MOONLIGHT_AUDIO_CONFIG")"
 
 emit_var MODE "$MODE"
 emit_var CONNECTION_METHOD "$CONNECTION_METHOD"
@@ -198,15 +154,8 @@ emit_var NETWORK_STATIC_ADDRESS "$NETWORK_STATIC_ADDRESS"
 emit_var NETWORK_STATIC_PREFIX "$NETWORK_STATIC_PREFIX"
 emit_var NETWORK_GATEWAY "$NETWORK_GATEWAY"
 emit_var NETWORK_DNS_SERVERS "$NETWORK_DNS_SERVERS"
-emit_var SPICE_URL "$SPICE_URL"
-emit_var NOVNC_URL "$NOVNC_URL"
-emit_var DCV_URL "$DCV_URL"
 emit_var MOONLIGHT_HOST "$MOONLIGHT_HOST"
 emit_var MOONLIGHT_APP "$MOONLIGHT_APP"
-emit_var REMOTE_VIEWER_BIN "$REMOTE_VIEWER_BIN"
-emit_var BROWSER_BIN "$BROWSER_BIN"
-emit_var BROWSER_FLAGS "$BROWSER_FLAGS"
-emit_var DCV_VIEWER_BIN "$DCV_VIEWER_BIN"
 emit_var MOONLIGHT_BIN "$MOONLIGHT_BIN"
 emit_var MOONLIGHT_RESOLUTION "$MOONLIGHT_RESOLUTION"
 emit_var MOONLIGHT_FPS "$MOONLIGHT_FPS"

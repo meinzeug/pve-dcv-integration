@@ -2,6 +2,47 @@
 set -eu
 
 BOOT_MODE="${PVE_THIN_CLIENT_BOOT_MODE:-$(/usr/local/bin/pve-thin-client-boot-mode 2>/dev/null || printf runtime)}"
+HOST_TAG="$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf thinclient)"
+HOST_TAG="$(printf '%s' "$HOST_TAG" | tr -cs 'A-Za-z0-9._-' '-')"
+BOOT_STAMP="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || date +%Y%m%dT%H%M%SZ)"
+LOG_SESSION_ID="${PVE_THIN_CLIENT_LOG_SESSION_ID:-${BOOT_STAMP}-${BOOT_MODE}-${HOST_TAG}}"
+LOG_ROOT="${PVE_THIN_CLIENT_LOG_ROOT:-/tmp/pve-thin-client-logs}"
+LOG_DIR="${PVE_THIN_CLIENT_LOG_DIR:-$LOG_ROOT/$LOG_SESSION_ID}"
+mkdir -p "$LOG_DIR"
+export PVE_THIN_CLIENT_LOG_DIR="$LOG_DIR"
+export PVE_THIN_CLIENT_LOG_SESSION_ID="$LOG_SESSION_ID"
+
+{
+  printf 'BOOT_MODE=%s\n' "$BOOT_MODE"
+  printf 'HOSTNAME=%s\n' "$HOST_TAG"
+  printf 'LOG_SESSION_ID=%s\n' "$LOG_SESSION_ID"
+  printf 'LOG_DIR=%s\n' "$LOG_DIR"
+  printf 'DATE=%s\n' "$(date -Is 2>/dev/null || date)"
+} >"$LOG_DIR/session.env" 2>&1 || true
+
+{
+  echo "=== date ==="
+  date -Is 2>/dev/null || date
+  echo
+  echo "=== boot mode ==="
+  printf '%s\n' "$BOOT_MODE"
+  echo
+  echo "=== /proc/cmdline ==="
+  cat /proc/cmdline 2>/dev/null || true
+  echo
+  echo "=== findmnt ==="
+  findmnt -rn -o TARGET,SOURCE,FSTYPE,OPTIONS 2>/dev/null || true
+  echo
+  echo "=== lsblk ==="
+  lsblk -e7 -o NAME,PATH,SIZE,TYPE,FSTYPE,LABEL,UUID,RM,TRAN,MOUNTPOINTS 2>/dev/null || true
+  echo
+  echo "=== blkid ==="
+  blkid 2>/dev/null || true
+} >>"$LOG_DIR/boot-session.log" 2>&1 || true
+
+if [ "${BOOT_MODE}" = "installer" ] && [ -x /usr/local/bin/pve-thin-client-live-menu ]; then
+  exec /usr/local/bin/pve-thin-client-live-menu >>"$LOG_DIR/live-menu-launch.log" 2>&1
+fi
 
 if command -v xsetroot >/dev/null 2>&1; then
   xsetroot -solid "#071a2c" >/dev/null 2>&1 || true
@@ -14,19 +55,37 @@ if command -v xset >/dev/null 2>&1; then
 fi
 
 if command -v openbox-session >/dev/null 2>&1; then
-  openbox-session >/tmp/pve-thin-client-openbox.log 2>&1 &
+  openbox-session >"$LOG_DIR/openbox.log" 2>&1 &
 fi
 
-if [ "${BOOT_MODE}" = "installer" ] && [ -x /usr/local/lib/pve-thin-client/usb/pve-thin-client-installer-ui.py ]; then
-  exec /usr/local/lib/pve-thin-client/usb/pve-thin-client-installer-ui.py
+if [ -x /usr/local/bin/pve-thin-client-display-init ]; then
+  /usr/local/bin/pve-thin-client-display-init >"$LOG_DIR/display-init.log" 2>&1 || true
+fi
+
+if [ -x /usr/local/bin/pve-thin-client-audio-init ]; then
+  /usr/local/bin/pve-thin-client-audio-init >"$LOG_DIR/audio-init.log" 2>&1 || true
 fi
 
 if [ -x /usr/local/lib/pve-thin-client/runtime/prepare-runtime.sh ]; then
   if command -v sudo >/dev/null 2>&1; then
-    sudo -n /usr/local/lib/pve-thin-client/runtime/prepare-runtime.sh >/tmp/pve-thin-client-prepare.log 2>&1 || true
+    sudo -n env \
+      PVE_THIN_CLIENT_LOG_DIR="$LOG_DIR" \
+      PVE_THIN_CLIENT_LOG_SESSION_ID="$LOG_SESSION_ID" \
+      /usr/local/lib/pve-thin-client/runtime/prepare-runtime.sh >"$LOG_DIR/prepare-runtime.log" 2>&1 || true
   else
-    /usr/local/lib/pve-thin-client/runtime/prepare-runtime.sh >/tmp/pve-thin-client-prepare.log 2>&1 || true
+    /usr/local/lib/pve-thin-client/runtime/prepare-runtime.sh >"$LOG_DIR/prepare-runtime.log" 2>&1 || true
   fi
 fi
 
-exec /usr/local/lib/pve-thin-client/runtime/launch-session.sh
+if /usr/local/lib/pve-thin-client/runtime/launch-session.sh >>"$LOG_DIR/runtime-session.log" 2>&1; then
+  exit 0
+fi
+status=$?
+printf '\n[thinclient] runtime launcher exited with status %s\n' "$status" >>"$LOG_DIR/runtime-session.log" 2>&1 || true
+
+if command -v xterm >/dev/null 2>&1; then
+  exec xterm -T "Thinclient Session Failed" -fa Monospace -fs 11 -fg white -bg black -hold \
+    -e /bin/sh -lc "echo 'Thinclient session start failed.'; echo 'User: thinclient'; echo 'Password: thinclient'; echo; tail -n 200 '$LOG_DIR/runtime-session.log' 2>/dev/null || true; echo; exec /bin/bash"
+fi
+
+exec /bin/bash

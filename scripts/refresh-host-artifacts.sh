@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_DIR="${PVE_DCV_CONFIG_DIR:-/etc/pve-dcv-integration}"
+CONFIG_DIR="${PVE_DCV_CONFIG_DIR:-/etc/beagle}"
 HOST_ENV_FILE="${PVE_DCV_HOST_ENV_FILE:-$CONFIG_DIR/host.env}"
-STATUS_DIR="${PVE_DCV_STATUS_DIR:-/var/lib/pve-dcv-integration}"
+STATUS_DIR="${PVE_DCV_STATUS_DIR:-/var/lib/beagle}"
 REFRESH_STATUS_FILE="$STATUS_DIR/refresh.status.json"
 
 START_TS="$(date +%s)"
@@ -72,7 +72,7 @@ load_host_env
 
 export PVE_DCV_PROXY_SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
 export PVE_DCV_PROXY_LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
-export PVE_DCV_DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+export PVE_DCV_DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/beagle-downloads}"
 export PVE_DCV_DOWNLOADS_BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${PVE_DCV_PROXY_SERVER_NAME}:${PVE_DCV_PROXY_LISTEN_PORT}${PVE_DCV_DOWNLOADS_PATH}}"
 
 "$ROOT_DIR/scripts/package.sh"

@@ -1,12 +1,12 @@
 [Unit]
-Description=Reapply PVE DCV Integration Proxmox UI hook
+Description=Reapply Beagle OS Proxmox UI hook
 After=local-fs.target pveproxy.service
 Wants=pveproxy.service
 ConditionPathExists=/usr/share/pve-manager/index.html.tpl
 
 [Service]
 Type=oneshot
-EnvironmentFile=-/etc/pve-dcv-integration/host.env
+EnvironmentFile=-/etc/beagle/host.env
 ExecStart=__INSTALL_DIR__/scripts/install-proxmox-ui-integration.sh
 WorkingDirectory=__INSTALL_DIR__
 

@@ -2,43 +2,47 @@
 
 ## Scope
 
-This repository does not provide a full identity, access-control or secret-management layer. It assumes Proxmox authentication, DCV authentication and endpoint hardening are handled by the surrounding environment.
+This repository does not provide a complete identity, secret-rotation or fleet-enrollment layer.
+It assumes Proxmox access, Sunshine access and endpoint hardening are managed by the surrounding environment.
 
-## Browser extension assumptions
+## Proxmox operator surface
 
-- The extension only talks to the Proxmox origin the user is already authenticated against.
-- API requests use the existing browser session and same-origin cookies.
-- No API tokens or passwords are stored in the repository.
-- The extension trusts Proxmox API responses and VM description metadata from administrators.
+- The browser extension only talks to the Proxmox origin the user is already authenticated against.
+- The host-installed UI integration resolves Beagle profile data from Proxmox API state and VM metadata.
+- VM description metadata is treated as administrator-controlled configuration.
+- Beagle profile exports can contain Sunshine credentials when the operator stores them in VM metadata.
 
 Operational implications:
 
-- treat VM description metadata as admin-controlled input
-- do not expose untrusted users to extension-managed launch templates without review
-- prefer HTTPS-based DCV URLs
+- treat VM description metadata as sensitive administrative input
+- limit who may edit or inspect Beagle-enabled VM descriptions
+- prefer dedicated Proxmox roles for operators who manage Beagle endpoints
 
-## Thin-client assistant assumptions
+## Thin-client endpoint assumptions
 
-- The thin client is a controlled endpoint with local admin access during installation.
-- The endpoint is intended for dedicated operational use, not general-purpose browsing.
-- The setup stores operational configuration locally on disk.
-- The DCV client binary may need to be installed from NICE-provided packages outside this repository.
+- The endpoint is a controlled device with dedicated operational purpose.
+- Local autologin is acceptable only on physically controlled hardware.
+- Beagle stores runtime configuration locally on disk.
+- Sunshine credentials and pairing data may be present on the endpoint if the deployment model requires unattended startup.
 
 Recommended hardening:
 
-- use a dedicated local user for the thin-client session
-- enable OS auto-login only on physically controlled devices
-- restrict shell access for the thin-client account
-- place devices in a network segment that can reach Proxmox/DCV but not unnecessary destinations
-- pin browser policy or kiosk flags for noVNC deployments
-- manage package updates through your standard OS patching process
-- when exposing DCV through the bundled Proxmox host proxy, reuse a valid Proxmox certificate and do not publish the backend VM's self-signed certificate directly
-- if using `dcv-user` and `dcv-password` metadata for browser auto-login, treat VM descriptions and browser history as sensitive because credentials are embedded in the launch URL before the DCV page strips them from the address bar
+- use a dedicated runtime user for the Beagle session
+- restrict shell access for the endpoint account
+- place endpoints in a network segment that can reach Proxmox and Sunshine, but not unnecessary destinations
+- manage OS and package updates through standard patching workflows
+- protect exported `endpoint.env` files and support bundles as operational secrets
+
+## Control plane assumptions
+
+- The Beagle control plane is intended to run behind the Proxmox host boundary.
+- Public health data may be exposed through the bundled `8443` endpoint.
+- Inventory endpoints should be treated as management APIs, not end-user APIs.
 
 ## Known non-goals in this baseline
 
-- Secure boot provisioning
-- Full disk encryption automation
-- Central fleet enrollment
-- Secret rotation
-- Automatic DCV client redistribution
+- secure boot provisioning
+- full disk encryption automation
+- central secret rotation
+- tenant-isolated multitenancy
+- zero-touch hardware enrollment

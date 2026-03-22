@@ -25,8 +25,8 @@ disable_proxmox_enterprise_repo() {
 
   while IFS= read -r file; do
     grep -q 'enterprise.proxmox.com' "$file" || continue
-    cp "$file" "$file.pve-dcv-backup"
-    awk '!/enterprise\.proxmox\.com/' "$file.pve-dcv-backup" > "$file"
+    cp "$file" "$file.beagle-backup"
+    awk '!/enterprise\.proxmox\.com/' "$file.beagle-backup" > "$file"
     found=1
   done < <(find /etc/apt -maxdepth 2 -type f \( -name '*.list' -o -name '*.sources' \) 2>/dev/null)
 
@@ -37,9 +37,9 @@ restore_proxmox_enterprise_repo() {
   local backup original
 
   while IFS= read -r backup; do
-    original="${backup%.pve-dcv-backup}"
+    original="${backup%.beagle-backup}"
     mv "$backup" "$original"
-  done < <(find /etc/apt -maxdepth 2 -type f -name '*.pve-dcv-backup' 2>/dev/null)
+  done < <(find /etc/apt -maxdepth 2 -type f -name '*.beagle-backup' 2>/dev/null)
 }
 
 apt_update_with_proxmox_fallback() {
@@ -144,10 +144,20 @@ fi
 popd >/dev/null
 
 chown -R "$OWNER_UID:$OWNER_GID" "$BUILD_DIR" "$DIST_DIR"
-chmod -R u+rwX "$DIST_DIR"
+chmod -R u+rwX,go+rX "$DIST_DIR"
+find "$DIST_DIR" -type f -name '*.sh' -exec chmod 0755 {} +
 
 mapfile -t kernel_images < <(find "$BUILD_DIR/binary/live" -maxdepth 1 -type f -name 'vmlinuz*' | sort)
 mapfile -t initrd_images < <(find "$BUILD_DIR/binary/live" -maxdepth 1 -type f -name 'initrd.img*' | sort)
+
+# Newer live-build paths can leave kernel/initrd in chroot/boot even when
+# binary/live only contains filesystem.squashfs.
+if [[ "${#kernel_images[@]}" -eq 0 ]]; then
+  mapfile -t kernel_images < <(find "$BUILD_DIR/chroot/boot" -maxdepth 1 -type f -name 'vmlinuz-*' | sort)
+fi
+if [[ "${#initrd_images[@]}" -eq 0 ]]; then
+  mapfile -t initrd_images < <(find "$BUILD_DIR/chroot/boot" -maxdepth 1 -type f -name 'initrd.img-*' | sort)
+fi
 
 if [[ "${#kernel_images[@]}" -eq 0 || "${#initrd_images[@]}" -eq 0 || ! -f "$BUILD_DIR/binary/live/filesystem.squashfs" ]]; then
   echo "Thin client build did not produce the required live assets." >&2

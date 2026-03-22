@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="/var/lib/beagle-os/support"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+BUNDLE_DIR="$STATE_DIR/beagle-support-$STAMP"
+ARCHIVE="$STATE_DIR/beagle-support-$STAMP.tar.gz"
+
+install -d -m 0755 "$STATE_DIR" "$BUNDLE_DIR"
+
+capture_command() {
+  local name="$1"
+  shift
+  "$@" >"$BUNDLE_DIR/$name.txt" 2>&1 || true
+}
+
+copy_if_exists() {
+  local src="$1"
+  local dst="$2"
+  [[ -e "$src" ]] || return 0
+  install -D -m 0644 "$src" "$BUNDLE_DIR/$dst"
+}
+
+capture_command uname uname -a
+capture_command hostname hostnamectl status
+capture_command os-release cat /etc/os-release
+capture_command ip-address ip -br addr
+capture_command ip-route ip route
+capture_command systemd-failed systemctl --failed --no-pager
+capture_command beagle-status /usr/local/bin/beagle-status
+capture_command journal-beagle-firstboot journalctl -u beagle-firstboot.service -b --no-pager
+capture_command journal-beagle-autologin journalctl -u beagle-autologin.service -b --no-pager
+capture_command journal-beagle-healthcheck journalctl -u beagle-healthcheck.service -b --no-pager
+capture_command journal-prepare-runtime journalctl -u pve-thin-client-prepare.service -b --no-pager
+capture_command process-list ps -ef
+
+copy_if_exists /etc/beagle-os/endpoint.env endpoint.env
+copy_if_exists /etc/pve-thin-client/thinclient.conf thinclient.conf
+copy_if_exists /etc/pve-thin-client/network.env network.env
+copy_if_exists /var/lib/beagle-os/health.status health.status
+copy_if_exists /var/lib/pve-thin-client/runtime.status runtime.status
+
+tar -C "$STATE_DIR" -czf "$ARCHIVE" "$(basename "$BUNDLE_DIR")"
+rm -rf "$BUNDLE_DIR"
+
+printf '%s\n' "$ARCHIVE"

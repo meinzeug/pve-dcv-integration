@@ -6,7 +6,7 @@ DIST_DIR="$ROOT_DIR/dist"
 VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION")"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
 LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
-DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/beagle-downloads}"
 BASE_URL="${PVE_DCV_DOWNLOADS_BASE_URL:-https://${SERVER_NAME}:${LISTEN_PORT}${DOWNLOADS_PATH}}"
 HOST_INSTALLER_VERSIONED="$DIST_DIR/pve-thin-client-usb-installer-host-v${VERSION}.sh"
 HOST_INSTALLER_LATEST="$DIST_DIR/pve-thin-client-usb-installer-host-latest.sh"
@@ -15,14 +15,14 @@ PAYLOAD_URL="${BASE_URL%/}/pve-thin-client-usb-payload-latest.tar.gz"
 BOOTSTRAP_URL="${BASE_URL%/}/pve-thin-client-usb-bootstrap-latest.tar.gz"
 INSTALLER_URL="${BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh"
 VM_INSTALLER_URL_TEMPLATE="${BASE_URL%/}/pve-thin-client-usb-installer-vm-{vmid}.sh"
-STATUS_URL="${BASE_URL%/}/pve-dcv-downloads-status.json"
+STATUS_URL="${BASE_URL%/}/beagle-downloads-status.json"
 SHA256SUMS_URL="${BASE_URL%/}/SHA256SUMS"
-STATUS_JSON_PATH="$DIST_DIR/pve-dcv-downloads-status.json"
-VM_INSTALLERS_METADATA_PATH="$DIST_DIR/pve-dcv-vm-installers.json"
+STATUS_JSON_PATH="$DIST_DIR/beagle-downloads-status.json"
+VM_INSTALLERS_METADATA_PATH="$DIST_DIR/beagle-vm-installers.json"
 INSTALLER_SHA256=""
 PAYLOAD_SHA256=""
 BOOTSTRAP_SHA256=""
-CREDENTIALS_ENV_FILE="${PVE_DCV_CREDENTIALS_ENV_FILE:-/etc/pve-dcv-integration/credentials.env}"
+CREDENTIALS_ENV_FILE="${PVE_DCV_CREDENTIALS_ENV_FILE:-/etc/beagle/credentials.env}"
 
 if [[ -f "$CREDENTIALS_ENV_FILE" ]]; then
   # Optional operator-managed defaults for VM installer preset generation.
@@ -147,18 +147,6 @@ def safe_hostname(name, vmid):
     return cleaned[:63].strip("-") or f"pve-tc-{vmid}"
 
 
-def with_auth_token_and_session(url, auth_token, session_id):
-    if not url:
-        return ""
-    parsed = urlparse(url if "://" in url else f"https://{url}")
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
-    fragment = parsed.fragment
-    if auth_token and not query.get("authToken"):
-        query["authToken"] = auth_token
-    if session_id and not fragment:
-        fragment = session_id
-    return urlunparse(parsed._replace(query=urlencode(query), fragment=fragment))
-
 def shell_double_quoted(value):
     return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
 
@@ -204,19 +192,12 @@ def build_preset(vm, config):
     proxmox_password = meta.get("proxmox-password", default_proxmox_password)
     proxmox_token = meta.get("proxmox-token", default_proxmox_token)
 
-    dcv_host = meta.get("dcv-host") or meta.get("dcv-ip") or ""
-    dcv_url = meta.get("dcv-url") or (f"https://{dcv_host}:{listen_port}/" if dcv_host else "")
-    dcv_url = with_auth_token_and_session(dcv_url, meta.get("dcv-auth-token", ""), meta.get("dcv-session", ""))
-    moonlight_host = meta.get("moonlight-host") or meta.get("sunshine-host") or meta.get("sunshine-ip") or dcv_host
+    moonlight_host = meta.get("moonlight-host") or meta.get("sunshine-host") or meta.get("sunshine-ip") or ""
     sunshine_api_url = meta.get("sunshine-api-url") or (f"https://{moonlight_host}:47990" if moonlight_host else "")
-    moonlight_default_mode = meta.get("thinclient-default-mode", "MOONLIGHT" if moonlight_host else "")
+    moonlight_default_mode = "MOONLIGHT" if moonlight_host else ""
     moonlight_resolution = (meta.get("moonlight-resolution") or "").strip()
     if not moonlight_resolution or moonlight_resolution in ("1080", "native", "auto"):
         moonlight_resolution = "auto"
-
-    spice_url = meta.get("spice-url", "")
-    novnc_url = meta.get("novnc-url", "")
-    spice_method = meta.get("spice-method", "direct" if spice_url else "proxmox-ticket")
 
     preset = {
         "PVE_THIN_CLIENT_PRESET_PROFILE_NAME": f"vm-{vmid}",
@@ -236,20 +217,20 @@ def build_preset(vm, config):
         "PVE_THIN_CLIENT_PRESET_PROXMOX_USERNAME": proxmox_username,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_PASSWORD": proxmox_password,
         "PVE_THIN_CLIENT_PRESET_PROXMOX_TOKEN": proxmox_token,
-        "PVE_THIN_CLIENT_PRESET_SPICE_METHOD": spice_method,
-        "PVE_THIN_CLIENT_PRESET_SPICE_URL": spice_url,
-        "PVE_THIN_CLIENT_PRESET_SPICE_USERNAME": meta.get("spice-user", proxmox_username),
-        "PVE_THIN_CLIENT_PRESET_SPICE_PASSWORD": meta.get("spice-password", proxmox_password),
-        "PVE_THIN_CLIENT_PRESET_SPICE_TOKEN": meta.get("spice-token", proxmox_token),
-        "PVE_THIN_CLIENT_PRESET_NOVNC_URL": novnc_url,
-        "PVE_THIN_CLIENT_PRESET_NOVNC_USERNAME": meta.get("novnc-user", proxmox_username),
-        "PVE_THIN_CLIENT_PRESET_NOVNC_PASSWORD": meta.get("novnc-password", proxmox_password),
-        "PVE_THIN_CLIENT_PRESET_NOVNC_TOKEN": meta.get("novnc-token", proxmox_token),
-        "PVE_THIN_CLIENT_PRESET_DCV_URL": dcv_url,
-        "PVE_THIN_CLIENT_PRESET_DCV_USERNAME": meta.get("dcv-user", ""),
-        "PVE_THIN_CLIENT_PRESET_DCV_PASSWORD": meta.get("dcv-password", ""),
-        "PVE_THIN_CLIENT_PRESET_DCV_TOKEN": meta.get("dcv-auth-token", ""),
-        "PVE_THIN_CLIENT_PRESET_DCV_SESSION": meta.get("dcv-session", ""),
+        "PVE_THIN_CLIENT_PRESET_SPICE_METHOD": "",
+        "PVE_THIN_CLIENT_PRESET_SPICE_URL": "",
+        "PVE_THIN_CLIENT_PRESET_SPICE_USERNAME": "",
+        "PVE_THIN_CLIENT_PRESET_SPICE_PASSWORD": "",
+        "PVE_THIN_CLIENT_PRESET_SPICE_TOKEN": "",
+        "PVE_THIN_CLIENT_PRESET_NOVNC_URL": "",
+        "PVE_THIN_CLIENT_PRESET_NOVNC_USERNAME": "",
+        "PVE_THIN_CLIENT_PRESET_NOVNC_PASSWORD": "",
+        "PVE_THIN_CLIENT_PRESET_NOVNC_TOKEN": "",
+        "PVE_THIN_CLIENT_PRESET_DCV_URL": "",
+        "PVE_THIN_CLIENT_PRESET_DCV_USERNAME": "",
+        "PVE_THIN_CLIENT_PRESET_DCV_PASSWORD": "",
+        "PVE_THIN_CLIENT_PRESET_DCV_TOKEN": "",
+        "PVE_THIN_CLIENT_PRESET_DCV_SESSION": "",
         "PVE_THIN_CLIENT_PRESET_MOONLIGHT_HOST": moonlight_host,
         "PVE_THIN_CLIENT_PRESET_MOONLIGHT_APP": meta.get("moonlight-app", meta.get("sunshine-app", "Desktop")),
         "PVE_THIN_CLIENT_PRESET_MOONLIGHT_BIN": meta.get("moonlight-bin", "moonlight"),
@@ -267,29 +248,8 @@ def build_preset(vm, config):
         "PVE_THIN_CLIENT_PRESET_SUNSHINE_PIN": meta.get("sunshine-pin", f"{vmid % 10000:04d}"),
     }
 
-    available_modes = []
-    if preset["PVE_THIN_CLIENT_PRESET_MOONLIGHT_HOST"]:
-        available_modes.append("MOONLIGHT")
-    if preset["PVE_THIN_CLIENT_PRESET_SPICE_URL"] or (
-        preset["PVE_THIN_CLIENT_PRESET_PROXMOX_HOST"]
-        and preset["PVE_THIN_CLIENT_PRESET_PROXMOX_NODE"]
-        and preset["PVE_THIN_CLIENT_PRESET_PROXMOX_VMID"]
-        and preset["PVE_THIN_CLIENT_PRESET_SPICE_USERNAME"]
-        and preset["PVE_THIN_CLIENT_PRESET_SPICE_PASSWORD"]
-    ):
-        available_modes.append("SPICE")
-    if preset["PVE_THIN_CLIENT_PRESET_NOVNC_URL"]:
-        available_modes.append("NOVNC")
-    if preset["PVE_THIN_CLIENT_PRESET_DCV_URL"]:
-        available_modes.append("DCV")
-
-    default_mode = (preset.get("PVE_THIN_CLIENT_PRESET_DEFAULT_MODE") or "").strip().upper()
-    if default_mode not in available_modes:
-        for preferred_mode in ("MOONLIGHT", "SPICE", "NOVNC", "DCV"):
-            if preferred_mode in available_modes:
-                default_mode = preferred_mode
-                break
-    preset["PVE_THIN_CLIENT_PRESET_DEFAULT_MODE"] = default_mode
+    available_modes = ["MOONLIGHT"] if preset["PVE_THIN_CLIENT_PRESET_MOONLIGHT_HOST"] else []
+    preset["PVE_THIN_CLIENT_PRESET_DEFAULT_MODE"] = "MOONLIGHT" if available_modes else ""
 
     return preset, available_modes
 
@@ -343,13 +303,13 @@ INSTALLER_SHA256="$(sha256sum "$HOST_INSTALLER_LATEST" | awk '{print $1}')"
 PAYLOAD_SHA256="$(sha256sum "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" | awk '{print $1}')"
 BOOTSTRAP_SHA256="$(sha256sum "$DIST_DIR/pve-thin-client-usb-bootstrap-latest.tar.gz" | awk '{print $1}')"
 
-cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
+cat > "$DIST_DIR/beagle-downloads-index.html" <<EOF
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PVE DCV Integration Downloads</title>
+  <title>Beagle OS Downloads</title>
   <style>
     body { font-family: sans-serif; margin: 2rem auto; max-width: 60rem; line-height: 1.5; padding: 0 1rem; }
     code { background: #f4f4f4; padding: 0.15rem 0.3rem; border-radius: 0.25rem; }
@@ -359,7 +319,7 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
   </style>
 </head>
 <body>
-  <h1>PVE DCV Integration Downloads</h1>
+  <h1>Beagle OS Downloads</h1>
   <p>Host-local thin-client media downloads for this Proxmox server.</p>
   <ul>
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-host-latest.sh">Generic USB installer launcher (fallback)</a></li>
@@ -367,7 +327,7 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-payload-latest.tar.gz">USB payload bundle</a></li>
     <li>VM-specific installer URLs now embed a full preset (host, vmid, node, credentials, stream defaults) so the thin client install can run without manual VM data entry.</li>
     <li>The generic installer remains available as fallback when no VM-specific preset should be embedded.</li>
-    <li><a href="${DOWNLOADS_PATH%/}/pve-dcv-downloads-status.json">Status JSON</a></li>
+    <li><a href="${DOWNLOADS_PATH%/}/beagle-downloads-status.json">Status JSON</a></li>
     <li><a href="${DOWNLOADS_PATH%/}/SHA256SUMS">SHA256SUMS</a></li>
   </ul>
   <p>The hosted USB installers download only a bootstrap bundle during USB creation. During target installation, the thin client fetches the latest payload directly from this Proxmox host. VM-specific installers ship with embedded presets so thin clients can be installed without manual profile input.</p>
@@ -375,7 +335,7 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
     <tr><th>Release version</th><td><code>${VERSION}</code></td></tr>
     <tr><th>Server</th><td><code>${SERVER_NAME}:${LISTEN_PORT}</code></td></tr>
     <tr><th>VM installer template</th><td><code>${VM_INSTALLER_URL_TEMPLATE}</code></td></tr>
-    <tr><th>Status JSON</th><td><a href="${DOWNLOADS_PATH%/}/pve-dcv-downloads-status.json">${STATUS_URL}</a></td></tr>
+    <tr><th>Status JSON</th><td><a href="${DOWNLOADS_PATH%/}/beagle-downloads-status.json">${STATUS_URL}</a></td></tr>
     <tr><th>SHA256SUMS</th><td><a href="${DOWNLOADS_PATH%/}/SHA256SUMS">${SHA256SUMS_URL}</a></td></tr>
     <tr><th>Hosted installer SHA256</th><td><code>${INSTALLER_SHA256}</code></td></tr>
     <tr><th>Bootstrap SHA256</th><td><code>${BOOTSTRAP_SHA256}</code></td></tr>

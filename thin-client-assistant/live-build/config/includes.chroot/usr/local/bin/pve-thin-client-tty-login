@@ -2,10 +2,13 @@
 set -eu
 
 THINCLIENT_USER="thinclient"
+THINCLIENT_PASSWORD="thinclient"
 
 if ! id "${THINCLIENT_USER}" >/dev/null 2>&1; then
   useradd -m -s /usr/local/bin/pve-thin-client-login-shell -G audio,video,plugdev,users,netdev "${THINCLIENT_USER}" || true
-  passwd -d "${THINCLIENT_USER}" >/dev/null 2>&1 || true
 fi
+
+usermod -s /usr/local/bin/pve-thin-client-login-shell "${THINCLIENT_USER}" >/dev/null 2>&1 || true
+printf '%s:%s\n' "${THINCLIENT_USER}" "${THINCLIENT_PASSWORD}" | chpasswd >/dev/null 2>&1 || true
 
 exec /sbin/agetty --autologin "${THINCLIENT_USER}" --noclear "${1:-tty1}" "${2:-linux}"

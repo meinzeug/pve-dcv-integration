@@ -1,3 +1,85 @@
 #!/bin/sh
 set -eu
-startx /usr/local/bin/start-pve-thin-client-session -- :0 vt1 -keeptty -nolisten tcp
+
+LOG_DIR="${PVE_THIN_CLIENT_X11_LOG_DIR:-}"
+LOG_FILE=""
+
+setup_logging() {
+  for candidate in \
+    "${LOG_DIR}" \
+    "/tmp/pve-thin-client-logs" \
+    "${XDG_RUNTIME_DIR:-/run/user/1000}/pve-thin-client" \
+    "/home/thinclient/.cache/pve-thin-client"
+  do
+    [ -n "$candidate" ] || continue
+    if mkdir -p "$candidate" >/dev/null 2>&1 && touch "$candidate/start-x11.log" >/dev/null 2>&1; then
+      chmod 0644 "$candidate/start-x11.log" >/dev/null 2>&1 || true
+      LOG_DIR="$candidate"
+      LOG_FILE="$candidate/start-x11.log"
+      exec >>"$LOG_FILE" 2>&1
+      return 0
+    fi
+  done
+  return 1
+}
+
+setup_logging || true
+
+echo "[start-x11] $(date -Is 2>/dev/null || date) starting X session launcher"
+if [ -n "${LOG_FILE}" ]; then
+  echo "[start-x11] log file: ${LOG_FILE}"
+else
+  echo "[start-x11] log file unavailable, using current tty/stdout"
+fi
+
+wait_for_graphics() {
+  timeout="${PVE_THIN_CLIENT_DRI_WAIT_SECONDS:-20}"
+  counter=0
+
+  if [ -e /dev/dri/card0 ] || [ -e /dev/dri/renderD128 ]; then
+    return 0
+  fi
+
+  if command -v udevadm >/dev/null 2>&1; then
+    udevadm settle --timeout="$timeout" >/dev/null 2>&1 || true
+  fi
+
+  while [ "$counter" -lt "$timeout" ]; do
+    if [ -e /dev/dri/card0 ] || [ -e /dev/dri/renderD128 ]; then
+      return 0
+    fi
+    sleep 1
+    counter=$((counter + 1))
+  done
+
+  return 0
+}
+
+clear_stale_x_locks() {
+  rm -f /tmp/.X0-lock >/dev/null 2>&1 || true
+  rm -f /tmp/.X11-unix/X0 >/dev/null 2>&1 || true
+}
+
+launch_x_once() {
+  echo "[start-x11] invoking startx (attempt=${1:-1})"
+  startx /usr/local/bin/start-pve-thin-client-session -- :0 vt1 -keeptty -nolisten tcp
+}
+
+wait_for_graphics
+clear_stale_x_locks
+
+attempt=1
+while [ "$attempt" -le 2 ]; do
+  if launch_x_once "$attempt"; then
+    echo "[start-x11] X session exited normally"
+    exit 0
+  fi
+  status=$?
+  echo "[start-x11] startx failed with status=$status (attempt=$attempt)"
+  clear_stale_x_locks
+  attempt=$((attempt + 1))
+  sleep 1
+done
+
+echo "[start-x11] giving up after retries"
+exit "$status"

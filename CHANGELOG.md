@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.4.0 - 2026-03-22
+
+- Added a first-class Beagle VM profile dialog to both the host-installed Proxmox UI and the browser extension, so operators can inspect a fully resolved Moonlight/Sunshine endpoint profile per VM and export it directly from the Proxmox workflow.
+- Added installer, profile-export and control-plane health actions to the Beagle UI path, turning the Proxmox integration into an operator surface instead of a single download trigger.
+- Added a host-side `beagle-control-plane` service that publishes Beagle health and VM inventory data for installed Proxmox hosts.
+- Narrowed Beagle preset generation to Moonlight/Sunshine-only profiles so new per-VM installers no longer publish legacy SPICE, noVNC or DCV fallbacks in Beagle profiles.
+- Updated the main architecture, installation and security documentation to describe Beagle as a Proxmox-native Moonlight/Sunshine endpoint and management stack.
+
 ## v3.3.1 - 2026-03-17
 
 - Fixed the Sunshine guest provisioning path so LightDM is forced in as the actual `display-manager.service`, replacing the stale `gdm3` default that kept the Xfce autologin desktop from coming up after the first reboot.

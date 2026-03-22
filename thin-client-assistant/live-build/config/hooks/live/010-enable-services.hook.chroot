@@ -1,5 +1,23 @@
 #!/bin/sh
 set -e
 
+enable_if_present() {
+  unit="$1"
+  if [ -e "/etc/systemd/system/$unit" ] || [ -e "/lib/systemd/system/$unit" ] || [ -e "/usr/lib/systemd/system/$unit" ]; then
+    systemctl enable "$unit"
+  fi
+}
+
+ensure_wantedby_symlink() {
+  unit="$1"
+  target="$2"
+  install -d -m 0755 "/etc/systemd/system/${target}.wants"
+  ln -sfn "$unit" "/etc/systemd/system/${target}.wants/$(basename "$unit")"
+}
+
 systemctl enable systemd-networkd.service
 systemctl enable systemd-networkd-wait-online.service
+ensure_wantedby_symlink /etc/systemd/system/pve-thin-client-installer-menu.service multi-user.target
+ensure_wantedby_symlink /etc/systemd/system/pve-thin-client-runtime.service multi-user.target
+systemctl enable getty@tty1.service
+systemctl enable ssh.service

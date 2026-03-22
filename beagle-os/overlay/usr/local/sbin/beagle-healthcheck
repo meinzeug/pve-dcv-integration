@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="/var/lib/beagle-os"
+LOG_DIR="/var/log/beagle-os"
+HEALTH_FILE="$STATE_DIR/health.status"
+ENDPOINT_FILE="/etc/beagle-os/endpoint.env"
+
+install -d -m 0755 "$STATE_DIR" "$LOG_DIR"
+
+if [[ -r "$ENDPOINT_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENDPOINT_FILE"
+fi
+
+moonlight_host="${BEAGLE_ENDPOINT_MOONLIGHT_HOST:-}"
+sunshine_api_url="${BEAGLE_ENDPOINT_SUNSHINE_API_URL:-}"
+sunshine_username="${BEAGLE_ENDPOINT_SUNSHINE_USERNAME:-}"
+sunshine_password="${BEAGLE_ENDPOINT_SUNSHINE_PASSWORD:-}"
+network_mode="${BEAGLE_ENDPOINT_NETWORK_MODE:-dhcp}"
+autostart="${BEAGLE_ENDPOINT_AUTOSTART:-0}"
+hostname_value="$(hostname)"
+ip_summary="$(ip -br addr 2>/dev/null | tr '\n' ';' | sed 's/;$/\n/' || true)"
+default_route="$(ip route show default 2>/dev/null | head -n 1 || true)"
+network_state="$(systemctl is-active NetworkManager.service 2>/dev/null || true)"
+ssh_state="$(systemctl is-active ssh.service 2>/dev/null || true)"
+autologin_state="$(systemctl is-active beagle-autologin.service 2>/dev/null || true)"
+prepare_state="$(systemctl is-active pve-thin-client-prepare.service 2>/dev/null || true)"
+guest_agent_state="$(systemctl is-active qemu-guest-agent.service 2>/dev/null || true)"
+moonlight_binary="0"
+moonlight_target_reachable="0"
+sunshine_api_reachable="0"
+
+if command -v moonlight >/dev/null 2>&1; then
+  moonlight_binary="1"
+fi
+
+if [[ -n "$moonlight_host" ]]; then
+  if ping -c 1 -W 2 "$moonlight_host" >/dev/null 2>&1; then
+    moonlight_target_reachable="1"
+  fi
+fi
+
+if [[ -n "$sunshine_api_url" ]]; then
+  curl_args=(-kfsS --connect-timeout 2 --max-time 4 -o /dev/null)
+  if [[ -n "$sunshine_username" && -n "$sunshine_password" ]]; then
+    curl_args+=(--user "${sunshine_username}:${sunshine_password}")
+  fi
+  if curl "${curl_args[@]}" "${sunshine_api_url%/}/api/apps"; then
+    sunshine_api_reachable="1"
+  fi
+fi
+
+cat >"$HEALTH_FILE" <<EOF
+timestamp=$(date -Iseconds)
+hostname=$hostname_value
+network_mode=$network_mode
+autostart=$autostart
+moonlight_host=${moonlight_host:-UNSET}
+sunshine_api_url=${sunshine_api_url:-UNSET}
+moonlight_binary=$moonlight_binary
+moonlight_target_reachable=$moonlight_target_reachable
+sunshine_api_reachable=$sunshine_api_reachable
+networkmanager_state=${network_state:-unknown}
+ssh_state=${ssh_state:-unknown}
+autologin_state=${autologin_state:-unknown}
+prepare_state=${prepare_state:-unknown}
+guest_agent_state=${guest_agent_state:-unknown}
+default_route=${default_route:-UNSET}
+ip_summary=${ip_summary:-UNSET}
+EOF
+
+cp "$HEALTH_FILE" "$LOG_DIR/health.status"

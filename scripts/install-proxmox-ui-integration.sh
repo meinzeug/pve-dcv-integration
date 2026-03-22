@@ -3,20 +3,20 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PVE_DIR="/usr/share/pve-manager"
-CONFIG_TARGET="$PVE_DIR/js/pve-dcv-integration-config.js"
-JS_TARGET="$PVE_DIR/js/pve-dcv-integration.js"
+CONFIG_TARGET="$PVE_DIR/js/beagle-ui-config.js"
+JS_TARGET="$PVE_DIR/js/beagle-ui.js"
 TPL_TARGET="$PVE_DIR/index.html.tpl"
-TPL_BACKUP="$PVE_DIR/index.html.tpl.pve-dcv-integration.bak"
+TPL_BACKUP="$PVE_DIR/index.html.tpl.beagle.bak"
 PROJECT_VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
 LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
-DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/pve-dcv-downloads}"
-DEFAULT_USB_INSTALLER_URL="https://__HOST__:${LISTEN_PORT}${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-vm-__VMID__.sh"
-DEFAULT_USB_INSTALLER_URL="${DEFAULT_USB_INSTALLER_URL/__HOST__/\{host\}}"
-DEFAULT_USB_INSTALLER_URL="${DEFAULT_USB_INSTALLER_URL/__VMID__/\{vmid\}}"
+DOWNLOADS_PATH="${PVE_DCV_DOWNLOADS_PATH:-/beagle-downloads}"
+DEFAULT_USB_INSTALLER_URL="https://{host}:${LISTEN_PORT}${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-vm-{vmid}.sh"
 USB_INSTALLER_URL="${PVE_DCV_USB_INSTALLER_URL:-$DEFAULT_USB_INSTALLER_URL}"
-CONFIG_INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/pve-dcv-integration-config.js?ver=[% version %]-pvedcv-${PROJECT_VERSION}\"></script>"
-INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/pve-dcv-integration.js?ver=[% version %]-pvedcv-${PROJECT_VERSION}\"></script>"
+DEFAULT_CONTROL_PLANE_HEALTH_URL="https://{host}:${LISTEN_PORT}/beagle-api/api/v1/health"
+CONTROL_PLANE_HEALTH_URL="${BEAGLE_CONTROL_PLANE_HEALTH_URL:-$DEFAULT_CONTROL_PLANE_HEALTH_URL}"
+CONFIG_INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/beagle-ui-config.js?ver=[% version %]-beagle-${PROJECT_VERSION}\"></script>"
+INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/beagle-ui.js?ver=[% version %]-beagle-${PROJECT_VERSION}\"></script>"
 
 ensure_root() {
   if [[ "${EUID}" -eq 0 ]]; then
@@ -38,10 +38,11 @@ if [[ ! -d "$PVE_DIR/js" || ! -f "$TPL_TARGET" ]]; then
   exit 1
 fi
 
-install -D -m 0644 "$ROOT_DIR/proxmox-ui/pve-dcv-integration.js" "$JS_TARGET"
+install -D -m 0644 "$ROOT_DIR/proxmox-ui/beagle-ui.js" "$JS_TARGET"
 cat > "$CONFIG_TARGET" <<EOF
-window.PVEDCVIntegrationConfig = Object.assign({}, window.PVEDCVIntegrationConfig || {}, {
-  usbInstallerUrl: ${USB_INSTALLER_URL@Q}
+window.BeagleIntegrationConfig = Object.assign({}, window.BeagleIntegrationConfig || {}, {
+  usbInstallerUrl: ${USB_INSTALLER_URL@Q},
+  controlPlaneHealthUrl: ${CONTROL_PLANE_HEALTH_URL@Q}
 });
 EOF
 
@@ -62,7 +63,7 @@ if needle not in text:
     raise SystemExit("needle not found in index.html.tpl")
 lines = []
 for line in text.splitlines():
-    if '/pve2/js/pve-dcv-integration.js' in line or '/pve2/js/pve-dcv-integration-config.js' in line:
+    if '/pve2/js/beagle-ui.js' in line or '/pve2/js/beagle-ui-config.js' in line:
         continue
     lines.append(line)
 text = "\n".join(lines) + "\n"

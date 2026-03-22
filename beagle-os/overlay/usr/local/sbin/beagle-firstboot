@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+STATE_DIR="/etc/beagle-os"
+STATE_FILE="$STATE_DIR/initialized"
+DEFAULT_USER="${BEAGLE_OS_RUNTIME_USER:-thinclient}"
+
+install -d -m 0755 "$STATE_DIR"
+
+if [[ ! -s /etc/machine-id ]]; then
+  systemd-machine-id-setup
+fi
+
+if id "$DEFAULT_USER" >/dev/null 2>&1; then
+  for group in audio video input render netdev; do
+    getent group "$group" >/dev/null 2>&1 || continue
+    usermod -aG "$group" "$DEFAULT_USER" >/dev/null 2>&1 || true
+  done
+fi
+
+if [[ -x /usr/local/sbin/beagle-render-config ]]; then
+  /usr/local/sbin/beagle-render-config >/dev/null 2>&1 || true
+fi
+
+if [[ -x /usr/local/sbin/beagle-healthcheck ]]; then
+  /usr/local/sbin/beagle-healthcheck >/dev/null 2>&1 || true
+fi
+
+touch "$STATE_FILE"

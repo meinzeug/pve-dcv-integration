@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PVE DCV Integration - Options</title>
+  <title>Beagle OS - Options</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -11,12 +11,29 @@
       max-width: 840px;
       color: #1f2937;
     }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .brand img {
+      width: 96px;
+      height: 96px;
+      object-fit: contain;
+    }
+    .brand-copy h1 {
+      margin: 0 0 6px;
+    }
+    .brand-copy p {
+      margin: 0;
+    }
     label {
       display: block;
       margin-top: 16px;
       font-weight: 600;
     }
-    input, textarea {
+    input {
       width: 100%;
       margin-top: 8px;
       padding: 10px;
@@ -47,23 +64,21 @@
   </style>
 </head>
 <body>
-  <h1>PVE DCV Integration</h1>
-  <p>Configure how the DCV URL should be generated.</p>
-
-  <label for="urlTemplate">Launch URL template</label>
-  <input id="urlTemplate" type="text" placeholder="https://{ip}:8443/" />
-  <div class="hint">Supported placeholders: {ip}, {node}, {vmid}, {host}</div>
-
-  <label for="fallbackUrl">Fallback URL (optional)</label>
-  <input id="fallbackUrl" type="text" placeholder="https://dcv-gateway.example.com/" />
-
-  <label for="metadataKeys">Metadata keys (comma separated)</label>
-  <input id="metadataKeys" type="text" placeholder="dcv-url,dcv-host,dcv-ip,dcv-user,dcv-password,dcv-auth-token,dcv-session,dcv-auto-submit" />
-  <div class="hint">These keys are searched in the VM description when guest-agent data is missing.</div>
+  <div class="brand">
+    <img src="assets/beagleos.png" alt="Beagle OS logo" />
+    <div class="brand-copy">
+      <h1>Beagle OS</h1>
+      <p>Configure how Proxmox VM pages should resolve the matching Beagle installer and host health endpoints.</p>
+    </div>
+  </div>
 
   <label for="usbInstallerUrl">USB installer download URL</label>
-  <input id="usbInstallerUrl" type="text" placeholder="https://{host}:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh" />
+  <input id="usbInstallerUrl" type="text" placeholder="https://{host}:8443/beagle-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh" />
   <div class="hint">Supported placeholders: {node}, {vmid}, {host}. By default the active VM page downloads its own preseeded USB installer from the local Proxmox host.</div>
+
+  <label for="controlPlaneHealthUrl">Control plane health URL</label>
+  <input id="controlPlaneHealthUrl" type="text" placeholder="https://{host}:8443/beagle-api/api/v1/health" />
+  <div class="hint">Used by the Beagle profile dialog to jump from a VM view into the host-side Beagle control plane status.</div>
 
   <button id="saveBtn">Save</button>
   <div id="status" class="ok"></div>

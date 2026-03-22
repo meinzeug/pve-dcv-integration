@@ -1,364 +1,191 @@
+<p align="center">
+  <img src="docs/assets/beagleos.png" alt="Beagle OS logo" width="320">
+</p>
+
 # Beagle OS
 
-Beagle OS is a thin-client focused operating system project with two deployable tracks:
+Beagle OS is a Proxmox-native endpoint OS and management stack for streaming virtual desktops.
 
-- an own OS image build with custom kernel (`-beagle`)
-- a Proxmox integration layer for VM-aware thin-client delivery (`MOONLIGHT`, `SPICE`, `noVNC`, `DCV`)
+Das Konzept ist absichtlich eng geführt:
 
-Typical deployment path:
+- Proxmox ist die zentrale Management- und Betriebsplattform
+- die VM liefert den Stream mit Sunshine
+- der Client verbindet sich mit Moonlight
+- Beagle OS ist das dedizierte Endpoint-OS für diesen Zweck
+- das Projekt positioniert sich als offene, Proxmox-zentrierte Endpunktplattform
 
-- install Beagle integration on the Proxmox host
-- provision a Sunshine target VM
-- create/use a Beagle OS client image
-- start low-latency Moonlight streaming to the target VM
+Beagle OS ist kein Sammelsurium für verschiedene Remote-Protokolle. Der Produktpfad ist genau einer:
 
-## Quick Links
+- `Sunshine` in der Ziel-VM
+- `Moonlight` auf Beagle OS
+- `Proxmox` als Inventar-, Bereitstellungs- und Betriebsoberfläche
 
-- Latest release: [GitHub Releases](https://github.com/meinzeug/beagle-os/releases/latest)
-- Host install: [`scripts/install-proxmox-host.sh`](./scripts/install-proxmox-host.sh)
-- Sunshine guest provisioning: [`scripts/configure-sunshine-guest.sh`](./scripts/configure-sunshine-guest.sh)
-- Proxmox VM baseline for Beagle OS: [`scripts/optimize-proxmox-vm-for-beagle.sh`](./scripts/optimize-proxmox-vm-for-beagle.sh)
-- Build Beagle OS image (own kernel): [`scripts/build-beagle-os.sh`](./scripts/build-beagle-os.sh)
-- Build docs: [`docs/beagle-os-build.md`](./docs/beagle-os-build.md)
-- Thin-client docs: [`docs/thin-client-installation.md`](./docs/thin-client-installation.md)
-- Architecture docs: [`docs/architecture.md`](./docs/architecture.md)
+## Produktidee
 
-## What It Does
+Beagle OS besteht aus zwei zusammengehörigen Ebenen:
 
-Beagle OS adds three deployable layers around Proxmox VE:
+1. `Beagle Control Plane auf Proxmox`
+2. `Beagle OS als Thin-Client-Betriebssystem`
 
-| Layer | Purpose | Result |
-| --- | --- | --- |
-| Proxmox UI integration | Adds one simple VM action directly in Proxmox | `Beagle OS` |
-| Host-side artifact publishing | Builds and serves VM-aware installers | `https://<host>:8443/pve-dcv-downloads/...` |
-| Thin-client runtime | Turns a device into a dedicated session endpoint | `MOONLIGHT`, `SPICE`, `NOVNC`, `DCV` |
+Die Control Plane hängt direkt an Proxmox und macht VMs zu verwaltbaren Streaming-Zielen.
+Das Betriebssystem bootet auf Thin Clients, Mini-PCs oder USB-Medien und startet danach direkt Moonlight gegen die zugewiesene VM.
 
-It stays independent from Proxmox core:
+Im Ergebnis entsteht kein klassischer "Remote-Desktop-Baukasten", sondern eine gemanagte Endpunktlösung:
 
-- no fork of Proxmox packages
-- no permanent patch set inside upstream packages
-- reinstall/reapply logic survives `pve-manager` updates
+- VM-bezogene Installer direkt aus Proxmox
+- aufgeloeste VM-Profile direkt in der Proxmox-Oberflaeche
+- vorkonfigurierte Streaming-Ziele pro VM
+- reproduzierbare Client-Images
+- dedizierte Thin-Client-Endpunkte statt allgemeiner Linux-Desktops
+- Betriebsmodell für viele Clients mit gleichem Zielbild
+- Geräte-Diagnostik und Support-Bundles direkt im Endpoint-OS
+- vorbereitbare Moonlight-Client-Identitäten für reproduzierbare Sunshine-Freischaltung
 
-## Recommended 2026 Deployment
+## Zielbild
 
-For a CPU-only Proxmox host, the preferred low-latency path is:
+Beagle OS ist als offene Endpunkt- und Managementplattform fuer virtuelle Arbeitsplaetze gedacht:
 
-- Sunshine inside the guest VM
-- Moonlight on the thin client
-- `H.264`
-- `1080p60`
-- wired Ethernet
-- lightweight guest desktop with Xfce + LightDM
-- compositor disabled
+- nicht Citrix- oder VMware-zentriert
+- nicht auf generische Broker-Stacks angewiesen
+- stattdessen direkt an Proxmox gekoppelt
+- optimiert für Moonlight/Sunshine-Streaming
+- gebaut für feste, kontrollierte Endgeräte
 
-That is exactly what `scripts/configure-sunshine-guest.sh` now prepares.
+Kurz gesagt:
 
-## System Overview
+- `offenes Management-Modell fuer Endpunkte`
+- `Proxmox-native Orchestrierung`
+- `Moonlight/Sunshine als einziger Streaming-Stack`
+
+## Betriebsmodell
+
+Der operative Ablauf ist bewusst einfach:
+
+1. Beagle-Integration auf dem Proxmox-Host installieren.
+2. Eine VM als Sunshine-Stream-Ziel vorbereiten.
+3. Die Zielparameter in Proxmox an die VM binden.
+4. Einen Beagle-OS-Installer oder ein Beagle-OS-Image ausrollen.
+5. Den Client booten und direkt gegen die zugeordnete VM streamen.
+
+Damit wird Proxmox nicht nur Compute-Plattform, sondern zugleich:
+
+- Inventar fuer Streaming-VMs
+- Ausgabepunkt fuer Client-Installer
+- Quelle fuer VM-spezifische Presets
+- zentraler Integrationspunkt fuer Beagle OS
+
+## Hauptkomponenten
+
+### 1. Beagle Control Plane auf Proxmox
+
+Die Host-Seite liefert die Management-Funktionen:
+
+- Integration in die Proxmox-Oberflaeche
+- Beagle-Profil-Dialoge mit Export-, Download- und Health-Aktionen pro VM
+- VM-spezifische Artefakt-Erzeugung
+- Download-Endpunkte fuer Installer und Images
+- lokale Control-Plane-API fuer Health und Inventar
+- Reapply-/Refresh-Mechanismen nach Host-Aenderungen
+
+Wichtig ist dabei die Produktlogik:
+
+- eine VM wird als Sunshine-Ziel beschrieben
+- Beagle erzeugt daraus den passenden Client-Preset
+- der Client startet anschliessend Moonlight gegen genau dieses Ziel
+
+### 2. Beagle OS als Endpoint-Betriebssystem
+
+Beagle OS ist das eigentliche Thin-Client-OS.
+Es ist kein allgemeines Desktop-System, sondern auf den Streaming-Zweck reduziert.
+
+Kernpunkte:
+
+- eigener Build-Pfad fuer das OS
+- eigener Kernel-Paketpfad (`-beagle`)
+- bootfaehige Images fuer Test, Rollout und VM-Betrieb
+- Runtime fuer Netzwerk, Autostart und Moonlight-Sessionstart
+
+### 3. VM-gebundene Bereitstellung
+
+Die Bereitstellung ist VM-zentriert statt benutzerzentriert.
+Eine konkrete VM in Proxmox ist das Streaming-Ziel.
+Daraus entstehen:
+
+- ein VM-spezifischer USB-Installer
+- ein gebuendeltes Preset mit Host, App und Pairing-Daten
+- ein reproduzierbarer Endpunkt, der nach Installation direkt die richtige VM startet
+
+## Warum nur Moonlight und Sunshine
+
+Diese Festlegung ist kein Marketing-Satz, sondern ein Architekturentscheid.
+
+Mehrere Protokolle klingen flexibel, machen das Produkt aber weicher, schwerer testbar und operativ unsauber.
+Beagle OS verfolgt stattdessen einen klaren Standardpfad:
+
+- ein Streaming-Protokoll
+- ein Client
+- ein Server
+- ein Provisionierungsmodell
+
+Das bringt klare Vorteile:
+
+- weniger Betriebsvarianten
+- weniger UI- und Installer-Komplexitaet
+- besser reproduzierbare Tests
+- besser optimierbare Latenz
+- einfachere Fehleranalyse
+- konsistentere Benutzererfahrung
+
+## Architektur in einem Satz
+
+Beagle OS macht aus Proxmox eine Verwaltungsoberflaeche fuer Moonlight/Sunshine-Endpunkte und liefert dazu ein dediziertes Endpoint-OS aus.
+
+## Typischer Ablauf
 
 ```mermaid
 flowchart LR
-    Admin["Operator in Proxmox UI"]
-    PVE["Proxmox Host\nBeagle OS"]
-    VM["Target VM\nSunshine or DCV metadata"]
-    USB["VM-specific USB installer"]
-    Client["Beagle OS Client\nbooted from USB or local disk"]
+    Admin[Admin in Proxmox]
+    PVE[Proxmox mit Beagle Integration]
+    VM[Ziel-VM mit Sunshine]
+    Artifact[Beagle Installer oder Image]
+    Client[Beagle OS Endpoint mit Moonlight]
 
-    Admin -->|"Beagle OS button"| PVE
-    PVE -->|"generate preset + artifacts"| USB
-    USB -->|"write bootable stick"| Client
-    Client -->|"launch selected mode"| VM
-    PVE -->|"UI hooks + hosted downloads"| Admin
-    VM -->|"metadata, guest IP, Sunshine API"| PVE
+    Admin --> PVE
+    PVE --> VM
+    PVE --> Artifact
+    Artifact --> Client
+    Client --> VM
 ```
 
-## End-to-End Flow
+## Repository-Fokus
 
-```mermaid
-sequenceDiagram
-    participant Admin as Admin
-    participant PVE as Proxmox Host
-    participant VM as VM 100
-    participant Stick as USB Stick
-    participant TC as Thin Client
+Dieses Repository baut die benoetigten Bausteine:
 
-    Admin->>PVE: Install integration on host
-    Admin->>VM: Provision Sunshine guest
-    VM-->>PVE: Store metadata in VM description
-    Admin->>PVE: Click "Thin Client" on VM page
-    PVE-->>Admin: Serve vm-100 installer script
-    Admin->>Stick: Run USB writer
-    Stick-->>Stick: Download payload + embed preset
-    TC->>Stick: Boot live installer
-    TC->>TC: Ask only for mode and target disk
-    TC->>VM: Pair and launch Moonlight stream
-```
+- Proxmox-Integration
+- Host-seitige Artefakt-Erzeugung
+- Thin-Client-Runtime
+- USB- und Installationspfad
+- Beagle-OS-Image-Build
+- Sunshine-Gastkonfiguration fuer Ziel-VMs
 
-## Main Components
+## Wichtige Einstiege
 
-### 1. Proxmox UI Integration
+- Host-Installation: [`scripts/install-proxmox-host.sh`](./scripts/install-proxmox-host.sh)
+- Host-Gesundheit pruefen: [`scripts/check-proxmox-host.sh`](./scripts/check-proxmox-host.sh)
+- Sunshine-Gast vorbereiten: [`scripts/configure-sunshine-guest.sh`](./scripts/configure-sunshine-guest.sh)
+- Moonlight-Client auf Sunshine vorregistrieren: [`scripts/register-moonlight-client-on-sunshine.sh`](./scripts/register-moonlight-client-on-sunshine.sh)
+- Beagle-OS-Image bauen: [`scripts/build-beagle-os.sh`](./scripts/build-beagle-os.sh)
+- Build-Doku: [`docs/beagle-os-build.md`](./docs/beagle-os-build.md)
+- Thin-Client-Komponenten: [`thin-client-assistant/`](./thin-client-assistant/)
 
-The project can work in two UI modes:
+## Aktuelle Produktausrichtung
 
-- browser extension from [`extension/`](./extension/)
-- host-installed UI integration from [`proxmox-ui/`](./proxmox-ui/)
+Die Zielrichtung fuer dieses Repository ist eindeutig:
 
-Operator-facing action:
+- Beagle OS wird als eigenes Endpoint-OS aufgebaut
+- Beagle integriert sich direkt in Proxmox
+- Beagle verwendet ausschliesslich Moonlight auf Client-Seite
+- die gestreamten VMs verwenden Sunshine
+- der Proxmox-Host uebernimmt die Management- und Bereitstellungsrolle
 
-- `Thin Client`
-
-The Proxmox UI is intentionally reduced to one per-VM entry point. That action downloads the preconfigured USB installer for the selected VM and hides the lower-level helper links from day-to-day operators.
-
-### 2. Host-Side Downloads
-
-The Proxmox host publishes locally generated artifacts under:
-
-```text
-https://<proxmox-host>:8443/pve-dcv-downloads/
-```
-
-Key outputs:
-
-- `pve-thin-client-usb-installer-vm-<vmid>.sh`
-- `pve-thin-client-usb-installer-host-latest.sh`
-- `pve-thin-client-usb-payload-latest.tar.gz`
-- `pve-dcv-downloads-status.json`
-- `SHA256SUMS`
-
-VM-specific installer scripts are generated from Proxmox VM config and description metadata.
-
-### 3. Thin-Client Runtime
-
-The runtime lives in [`thin-client-assistant/`](./thin-client-assistant/) and supports:
-
-| Mode | Runtime | Typical use |
-| --- | --- | --- |
-| `MOONLIGHT` | Sunshine + Moonlight | preferred low-latency desktop path |
-| `SPICE` | `remote-viewer` | Proxmox console workflow |
-| `NOVNC` | Chromium kiosk | browser-only fallback |
-| `DCV` | `dcvviewer` / browser proxy | DCV environments |
-
-## Sunshine / Moonlight Path
-
-```mermaid
-flowchart TD
-    Meta["VM description metadata"]
-    Host["prepare-host-downloads.sh"]
-    Preset["Base64 preset embedded into VM installer"]
-    Writer["USB writer"]
-    Local["local installer"]
-    Runtime["launch-moonlight.sh"]
-    Sunshine["Sunshine API + Desktop app"]
-
-    Meta --> Host
-    Host --> Preset
-    Preset --> Writer
-    Writer --> Local
-    Local --> Runtime
-    Runtime -->|"pair via /api/pin"| Sunshine
-    Runtime -->|"stream Desktop at H.264 1080p60"| Sunshine
-```
-
-Current Sunshine defaults:
-
-- `encoder = software`
-- `sw_preset = superfast`
-- `sw_tune = zerolatency`
-- `hevc_mode = 0`
-- `av1_mode = 0`
-- Xfce + LightDM
-- compositor disabled
-
-## Quick Start
-
-### Install On A Proxmox Host
-
-From the latest release:
-
-```bash
-tmpdir="$(mktemp -d)"
-cd "$tmpdir"
-curl -fsSLo pve-dcv.tar.gz \
-  https://github.com/meinzeug/beagle-os/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
-tar -xzf pve-dcv.tar.gz
-./scripts/install-proxmox-host.sh
-```
-
-What this does:
-
-1. installs the project into `/opt/pve-dcv-integration`
-2. installs or reapplies the Proxmox UI hooks
-3. installs host refresh and reapply services
-4. publishes USB artifacts on `:8443`
-5. keeps the integration resilient across later Proxmox updates
-
-### Provision A Sunshine Guest
-
-```bash
-./scripts/configure-sunshine-guest.sh \
-  --proxmox-host thinovernet \
-  --vmid 100 \
-  --guest-user dennis \
-  --sunshine-user sunshine \
-  --sunshine-password 'choose-a-strong-password'
-```
-
-This helper:
-
-- installs Xfce and LightDM
-- switches autologin to the target user
-- configures Sunshine for software H.264 streaming
-- writes a desktop autostart entry
-- disables Xfce compositor overhead
-- updates the VM description with Moonlight/Sunshine metadata
-
-### Build A VM-Specific USB Installer
-
-From the Proxmox UI, use the `Thin Client` action on the target VM.
-
-Or call the hosted URL directly:
-
-```text
-https://<proxmox-host>:8443/pve-dcv-downloads/pve-thin-client-usb-installer-vm-<vmid>.sh
-```
-
-### Write The USB Stick
-
-```bash
-./pve-thin-client-usb-installer-vm-100.sh
-```
-
-The standalone writer:
-
-- downloads the payload from the same Proxmox host
-- verifies `SHA256SUMS` when present
-- writes a BIOS+UEFI bootable USB medium
-- stores the VM preset on the medium
-
-### Boot The Thin Client
-
-On preseeded media, the local installer only needs:
-
-1. the streaming mode
-2. the target disk
-
-All per-VM connection data can already be baked in.
-
-### Build Beagle OS Image (Own Kernel)
-
-```bash
-./scripts/build-beagle-os.sh \
-  --kernel-version 6.12.22 \
-  --kernel-localversion -beagle \
-  --hostname beagle-os
-```
-
-Full details:
-
-- [`docs/beagle-os-build.md`](./docs/beagle-os-build.md)
-
-## VM Metadata Model
-
-The integration consumes VM description metadata to build URLs and presets.
-
-Example:
-
-```text
-sunshine-host: 10.10.10.100
-sunshine-api-url: https://10.10.10.100:47990
-sunshine-user: sunshine
-sunshine-password: <secret>
-sunshine-pin: 0100
-sunshine-app: Desktop
-moonlight-host: 10.10.10.100
-moonlight-app: Desktop
-moonlight-resolution: 1080
-moonlight-fps: 60
-moonlight-bitrate: 20000
-moonlight-video-codec: H.264
-thinclient-default-mode: MOONLIGHT
-```
-
-The same metadata model also still supports:
-
-- `dcv-url`
-- `dcv-host`
-- `dcv-user`
-- `dcv-password`
-- `spice-url`
-- `novnc-url`
-
-## Repository Layout
-
-| Path | Purpose |
-| --- | --- |
-| [`extension/`](./extension/) | browser extension |
-| [`proxmox-ui/`](./proxmox-ui/) | host-side Proxmox UI asset |
-| [`proxmox-host/`](./proxmox-host/) | host-side service templates |
-| [`thin-client-assistant/`](./thin-client-assistant/) | runtime, installer, USB tooling |
-| [`scripts/`](./scripts/) | install, packaging, validation, guest provisioning |
-| [`docs/`](./docs/) | deeper architecture and installation docs |
-
-## Release Artifacts
-
-`./scripts/package.sh` produces:
-
-| Artifact | Purpose |
-| --- | --- |
-| `pve-dcv-integration-extension-v<version>.zip` | browser extension bundle |
-| `pve-dcv-thin-client-assistant-v<version>.tar.gz` | installable project bundle |
-| `pve-dcv-thin-client-assistant-latest.tar.gz` | host install entrypoint |
-| `pve-thin-client-usb-installer-v<version>.sh` | generic USB writer |
-| `pve-thin-client-usb-installer-latest.sh` | latest generic USB writer |
-| `pve-thin-client-usb-payload-v<version>.tar.gz` | live installer payload |
-| `pve-thin-client-usb-payload-latest.tar.gz` | latest live installer payload |
-| `dist/beagle-os/*.qcow2` | own Beagle OS VM image (built via `build-beagle-os.sh`) |
-| `dist/beagle-os/*.raw` | own Beagle OS raw disk image |
-| `SHA256SUMS` | release verification |
-
-## Operations
-
-### Validate The Checkout
-
-```bash
-./scripts/validate-project.sh
-```
-
-### Publish GitHub Release
-
-```bash
-./scripts/create-github-release.sh
-```
-
-### Refresh Hosted Artifacts On The Host
-
-```bash
-sudo /opt/pve-dcv-integration/scripts/refresh-host-artifacts.sh
-```
-
-### Check Host Health
-
-```bash
-sudo /opt/pve-dcv-integration/scripts/check-proxmox-host.sh
-```
-
-### Inspect Published Host Status
-
-```text
-https://<proxmox-host>:8443/pve-dcv-downloads/pve-dcv-downloads-status.json
-```
-
-## Update Resilience
-
-The host installation is designed to survive normal Proxmox updates:
-
-- UI assets are re-applied automatically
-- hosted downloads are refreshed by service/timer
-- the project remains isolated under `/opt/pve-dcv-integration`
-- release-tarball installs can reuse published USB payloads instead of rebuilding locally
-
-## Related Docs
-
-- [Architecture](./docs/architecture.md)
-- [Thin-client installation](./docs/thin-client-installation.md)
-- [Changelog](./CHANGELOG.md)
-- [License](./LICENSE)
+Alles andere ist fuer das Produkt zweitrangig.

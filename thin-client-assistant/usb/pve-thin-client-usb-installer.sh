@@ -790,7 +790,9 @@ target.write_bytes(decoded)
 target.chmod(0o600)
 PY
 
-  install -m 0600 "$preset_file" "$mount_dir/pve-thin-client/live/preset.env"
+  # The live installer UI probes presets before escalating privileges.
+  # Keep preset readable inside the live medium to avoid false "no preset" states.
+  install -m 0644 "$preset_file" "$mount_dir/pve-thin-client/live/preset.env"
 }
 
 build_preset_kernel_args() {
@@ -933,7 +935,7 @@ set timeout=5
 set preset_args="${preset_kernel_args}"
 
 menuentry 'Thinclient Installer' {
-  linux /pve-thin-client/live/vmlinuz boot=live components username=thinclient hostname=pve-thin-client live-media=/dev/disk/by-uuid/${usb_uuid} live-media-path=/pve-thin-client/live live-media-timeout=10 ip=dhcp quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash irqpoll pci=nomsi noapic \${preset_args} pve_thin_client.mode=installer
+  linux /pve-thin-client/live/vmlinuz boot=live components username=thinclient hostname=pve-thin-client live-media=/dev/disk/by-uuid/${usb_uuid} live-media-path=/pve-thin-client/live live-media-timeout=10 ip=dhcp quiet loglevel=3 systemd.show_status=0 vt.global_cursor_default=0 splash \${preset_args} pve_thin_client.mode=installer
   initrd /pve-thin-client/live/initrd.img
 }
 
