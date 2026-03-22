@@ -15,6 +15,8 @@ REQUIRE_CHECKSUMS="0"
 ALLOW_NON_USB_DEVICE="0"
 ALLOW_SYSTEM_DISK="0"
 RELEASE_PAYLOAD_URL="${RELEASE_PAYLOAD_URL:-}"
+INSTALL_PAYLOAD_URL="${INSTALL_PAYLOAD_URL:-${RELEASE_PAYLOAD_URL:-}}"
+RELEASE_BOOTSTRAP_URL="${RELEASE_BOOTSTRAP_URL:-${RELEASE_PAYLOAD_URL:-}}"
 BOOTSTRAP_DIR=""
 BOOTSTRAPPED_STANDALONE="0"
 MIN_DEVICE_BYTES="${MIN_DEVICE_BYTES:-4294967296}"
@@ -72,6 +74,8 @@ rerun_as_root() {
   exec sudo \
     USB_LABEL="$USB_LABEL" \
     RELEASE_PAYLOAD_URL="$RELEASE_PAYLOAD_URL" \
+    INSTALL_PAYLOAD_URL="$INSTALL_PAYLOAD_URL" \
+    RELEASE_BOOTSTRAP_URL="$RELEASE_BOOTSTRAP_URL" \
     PVE_DCV_BOOTSTRAP_BASE="${PVE_DCV_BOOTSTRAP_BASE:-}" \
     MIN_DEVICE_BYTES="$MIN_DEVICE_BYTES" \
     PVE_THIN_CLIENT_PRESET_NAME="$PVE_THIN_CLIENT_PRESET_NAME" \
@@ -109,7 +113,7 @@ allocate_bootstrap_dir() {
 }
 
 bootstrap_repo_root() {
-  local tarball extracted checksum_file payload_name checksum_url checksum_log
+  local tarball extracted checksum_file payload_name checksum_url checksum_log bootstrap_url
   if [[ -d "$REPO_ROOT/thin-client-assistant" && -x "$REPO_ROOT/scripts/build-thin-client-installer.sh" ]]; then
     return 0
   fi
@@ -122,18 +126,19 @@ bootstrap_repo_root() {
   mkdir -p "$extracted"
   chmod 0755 "$BOOTSTRAP_DIR" "$extracted"
 
-  [[ -n "$RELEASE_PAYLOAD_URL" ]] || {
-    echo "Standalone mode requires RELEASE_PAYLOAD_URL to point at a hosted pve-thin-client-usb-payload tarball." >&2
-    echo "Use the host-provided installer from https://<proxmox-host>:8443/pve-dcv-downloads/ or export RELEASE_PAYLOAD_URL manually." >&2
+  bootstrap_url="${RELEASE_BOOTSTRAP_URL:-${RELEASE_PAYLOAD_URL:-}}"
+  [[ -n "$bootstrap_url" ]] || {
+    echo "Standalone mode requires RELEASE_BOOTSTRAP_URL to point at a hosted thin-client USB bootstrap tarball." >&2
+    echo "Use the host-provided installer from https://<proxmox-host>:8443/pve-dcv-downloads/ or export RELEASE_BOOTSTRAP_URL manually." >&2
     exit 1
   }
 
-  payload_name="$(basename "$RELEASE_PAYLOAD_URL")"
+  payload_name="$(basename "$bootstrap_url")"
   tarball="$BOOTSTRAP_DIR/$payload_name"
-  echo "Downloading thin-client payload bundle from $RELEASE_PAYLOAD_URL ..."
-  curl --fail --show-error --location --retry 3 --retry-delay 2 "$RELEASE_PAYLOAD_URL" -o "$tarball"
+  echo "Downloading thin-client bootstrap bundle from $bootstrap_url ..."
+  curl --fail --show-error --location --retry 3 --retry-delay 2 "$bootstrap_url" -o "$tarball"
   checksum_file="$BOOTSTRAP_DIR/SHA256SUMS"
-  checksum_url="${RELEASE_PAYLOAD_URL%/*}/SHA256SUMS"
+  checksum_url="${bootstrap_url%/*}/SHA256SUMS"
   checksum_log="$BOOTSTRAP_DIR/checksum-download.log"
   if curl --fail --silent --location --retry 2 --retry-delay 1 "$checksum_url" -o "$checksum_file" 2>"$checksum_log"; then
     if grep -F " ${payload_name}" "$checksum_file" >"$BOOTSTRAP_DIR/payload.sha256"; then
@@ -649,7 +654,7 @@ write_usb_manifest() {
   local mount_dir="$1"
   local payload_source installer_sha payload_sha
 
-  payload_source="${RELEASE_PAYLOAD_URL:-$REPO_ROOT/dist/pve-thin-client-usb-payload-latest.tar.gz}"
+  payload_source="${INSTALL_PAYLOAD_URL:-${RELEASE_PAYLOAD_URL:-$REPO_ROOT/dist/pve-thin-client-usb-payload-latest.tar.gz}}"
   installer_sha="$(sha256sum "$mount_dir/start-installer-menu.sh" | awk '{print $1}')"
   payload_sha="$(sha256sum "$mount_dir/pve-thin-client/live/filesystem.squashfs" | awk '{print $1}')"
 
@@ -755,12 +760,17 @@ PY
 }
 
 print_write_plan() {
+  local bootstrap_source install_payload_source
+
+  bootstrap_source="${RELEASE_BOOTSTRAP_URL:-${RELEASE_PAYLOAD_URL:-$REPO_ROOT/dist/pve-thin-client-usb-payload-latest.tar.gz}}"
+  install_payload_source="${INSTALL_PAYLOAD_URL:-${RELEASE_PAYLOAD_URL:-$REPO_ROOT/dist/pve-thin-client-usb-payload-latest.tar.gz}}"
   cat <<EOF
 Dry run only. No changes were written.
 Target device: $TARGET_DEVICE
 USB label: $USB_LABEL
 Project version: $PROJECT_VERSION
-Payload source: ${RELEASE_PAYLOAD_URL:-$REPO_ROOT/dist/pve-thin-client-usb-payload-latest.tar.gz}
+Bootstrap source: ${bootstrap_source}
+Install payload source: ${install_payload_source}
 Preset profile: ${PVE_THIN_CLIENT_PRESET_NAME:-generic}
 Planned partitions:
   1. BIOS boot partition (1 MiB - 3 MiB)

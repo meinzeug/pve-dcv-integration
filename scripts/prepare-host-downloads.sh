@@ -12,6 +12,7 @@ HOST_INSTALLER_VERSIONED="$DIST_DIR/pve-thin-client-usb-installer-host-v${VERSIO
 HOST_INSTALLER_LATEST="$DIST_DIR/pve-thin-client-usb-installer-host-latest.sh"
 GENERIC_INSTALLER="$DIST_DIR/pve-thin-client-usb-installer-v${VERSION}.sh"
 PAYLOAD_URL="${BASE_URL%/}/pve-thin-client-usb-payload-latest.tar.gz"
+BOOTSTRAP_URL="${BASE_URL%/}/pve-thin-client-usb-bootstrap-latest.tar.gz"
 INSTALLER_URL="${BASE_URL%/}/pve-thin-client-usb-installer-host-latest.sh"
 VM_INSTALLER_URL_TEMPLATE="${BASE_URL%/}/pve-thin-client-usb-installer-vm-{vmid}.sh"
 STATUS_URL="${BASE_URL%/}/pve-dcv-downloads-status.json"
@@ -20,6 +21,7 @@ STATUS_JSON_PATH="$DIST_DIR/pve-dcv-downloads-status.json"
 VM_INSTALLERS_METADATA_PATH="$DIST_DIR/pve-dcv-vm-installers.json"
 INSTALLER_SHA256=""
 PAYLOAD_SHA256=""
+BOOTSTRAP_SHA256=""
 CREDENTIALS_ENV_FILE="${PVE_DCV_CREDENTIALS_ENV_FILE:-/etc/pve-dcv-integration/credentials.env}"
 
 if [[ -f "$CREDENTIALS_ENV_FILE" ]]; then
@@ -49,29 +51,43 @@ ensure_dist_permissions() {
   echo "Missing packaged USB payload: $DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" >&2
   exit 1
 }
+[[ -f "$DIST_DIR/pve-thin-client-usb-bootstrap-latest.tar.gz" ]] || {
+  echo "Missing packaged USB bootstrap: $DIST_DIR/pve-thin-client-usb-bootstrap-latest.tar.gz" >&2
+  exit 1
+}
 
 rm -f "$DIST_DIR"/pve-thin-client-usb-installer-vm-*.sh "$VM_INSTALLERS_METADATA_PATH"
 install -m 0755 "$GENERIC_INSTALLER" "$HOST_INSTALLER_VERSIONED"
 
-python3 - "$HOST_INSTALLER_VERSIONED" "$PAYLOAD_URL" <<'PY'
+python3 - "$HOST_INSTALLER_VERSIONED" "$BOOTSTRAP_URL" "$PAYLOAD_URL" <<'PY'
 import re
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
-payload_url = sys.argv[2]
+bootstrap_url = sys.argv[2]
+payload_url = sys.argv[3]
 text = path.read_text()
-pattern = r'^RELEASE_PAYLOAD_URL="\$\{RELEASE_PAYLOAD_URL:-[^"]*}"$'
-replacement = f'RELEASE_PAYLOAD_URL="${{RELEASE_PAYLOAD_URL:-{payload_url}}}"'
-updated, count = re.subn(pattern, replacement, text, count=1, flags=re.MULTILINE)
-if count != 1:
-    raise SystemExit("failed to patch RELEASE_PAYLOAD_URL in hosted installer")
+
+replacements = {
+    r'^RELEASE_BOOTSTRAP_URL="\$\{RELEASE_BOOTSTRAP_URL:-[^"]*}"$':
+        f'RELEASE_BOOTSTRAP_URL="${{RELEASE_BOOTSTRAP_URL:-{bootstrap_url}}}"',
+    r'^RELEASE_PAYLOAD_URL="\$\{RELEASE_PAYLOAD_URL:-[^"]*}"$':
+        f'RELEASE_PAYLOAD_URL="${{RELEASE_PAYLOAD_URL:-{payload_url}}}"',
+    r'^INSTALL_PAYLOAD_URL="\$\{INSTALL_PAYLOAD_URL:-[^"]*}"$':
+        f'INSTALL_PAYLOAD_URL="${{INSTALL_PAYLOAD_URL:-{payload_url}}}"',
+}
+updated = text
+for pattern, replacement in replacements.items():
+    updated, count = re.subn(pattern, replacement, updated, count=1, flags=re.MULTILINE)
+    if count != 1:
+        raise SystemExit(f"failed to patch hosted installer default for pattern: {pattern}")
 path.write_text(updated)
 PY
 
 install -m 0755 "$HOST_INSTALLER_VERSIONED" "$HOST_INSTALLER_LATEST"
 
-python3 - "$HOST_INSTALLER_VERSIONED" "$DIST_DIR" "$VM_INSTALLERS_METADATA_PATH" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$VM_INSTALLER_URL_TEMPLATE" "$PAYLOAD_URL" "$DEFAULT_PROXMOX_USERNAME" "$DEFAULT_PROXMOX_PASSWORD" "$DEFAULT_PROXMOX_TOKEN" <<'PY'
+python3 - "$HOST_INSTALLER_VERSIONED" "$DIST_DIR" "$VM_INSTALLERS_METADATA_PATH" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$VM_INSTALLER_URL_TEMPLATE" "$BOOTSTRAP_URL" "$PAYLOAD_URL" "$DEFAULT_PROXMOX_USERNAME" "$DEFAULT_PROXMOX_PASSWORD" "$DEFAULT_PROXMOX_TOKEN" <<'PY'
 import base64
 import json
 import re
@@ -88,10 +104,11 @@ server_name = sys.argv[4]
 listen_port = int(sys.argv[5])
 downloads_path = sys.argv[6]
 installer_url_template = sys.argv[7]
-payload_url = sys.argv[8]
-default_proxmox_username = sys.argv[9]
-default_proxmox_password = sys.argv[10]
-default_proxmox_token = sys.argv[11]
+bootstrap_url = sys.argv[8]
+payload_url = sys.argv[9]
+default_proxmox_username = sys.argv[10]
+default_proxmox_password = sys.argv[11]
+default_proxmox_token = sys.argv[12]
 template = template_path.read_text()
 
 resources_cmd = ["pvesh", "get", "/cluster/resources", "--type", "vm", "--output-format", "json"]
@@ -145,10 +162,14 @@ def with_auth_token_and_session(url, auth_token, session_id):
 def shell_double_quoted(value):
     return str(value).replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$").replace("`", "\\`")
 
-def patch_installer_defaults(script_text, payload, preset_name, preset_b64):
+def patch_installer_defaults(script_text, bootstrap, payload, preset_name, preset_b64):
     replacements = {
+        r'^RELEASE_BOOTSTRAP_URL="\$\{RELEASE_BOOTSTRAP_URL:-[^"]*}"$':
+            f'RELEASE_BOOTSTRAP_URL="${{RELEASE_BOOTSTRAP_URL:-{shell_double_quoted(bootstrap)}}}"',
         r'^RELEASE_PAYLOAD_URL="\$\{RELEASE_PAYLOAD_URL:-[^"]*}"$':
             f'RELEASE_PAYLOAD_URL="${{RELEASE_PAYLOAD_URL:-{shell_double_quoted(payload)}}}"',
+        r'^INSTALL_PAYLOAD_URL="\$\{INSTALL_PAYLOAD_URL:-[^"]*}"$':
+            f'INSTALL_PAYLOAD_URL="${{INSTALL_PAYLOAD_URL:-{shell_double_quoted(payload)}}}"',
         r'^PVE_THIN_CLIENT_PRESET_NAME="\$\{PVE_THIN_CLIENT_PRESET_NAME:-[^"]*}"$':
             f'PVE_THIN_CLIENT_PRESET_NAME="${{PVE_THIN_CLIENT_PRESET_NAME:-{shell_double_quoted(preset_name)}}}"',
         r'^PVE_THIN_CLIENT_PRESET_B64="\$\{PVE_THIN_CLIENT_PRESET_B64:-[^"]*}"$':
@@ -298,7 +319,7 @@ for vm in resources:
     preset_b64 = encode_preset(preset)
     installer_name = f"pve-thin-client-usb-installer-vm-{vm['vmid']}.sh"
     installer_path = dist_dir / installer_name
-    installer_path.write_text(patch_installer_defaults(template, payload_url, preset_name, preset_b64))
+    installer_path.write_text(patch_installer_defaults(template, bootstrap_url, payload_url, preset_name, preset_b64))
     installer_path.chmod(0o755)
     vm_installers.append(
         {
@@ -320,6 +341,7 @@ ensure_dist_permissions
 
 INSTALLER_SHA256="$(sha256sum "$HOST_INSTALLER_LATEST" | awk '{print $1}')"
 PAYLOAD_SHA256="$(sha256sum "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" | awk '{print $1}')"
+BOOTSTRAP_SHA256="$(sha256sum "$DIST_DIR/pve-thin-client-usb-bootstrap-latest.tar.gz" | awk '{print $1}')"
 
 cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
 <!doctype html>
@@ -341,13 +363,14 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
   <p>Host-local thin-client media downloads for this Proxmox server.</p>
   <ul>
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-installer-host-latest.sh">Generic USB installer launcher (fallback)</a></li>
+    <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-bootstrap-latest.tar.gz">USB bootstrap bundle (used while creating installer media)</a></li>
     <li><a href="${DOWNLOADS_PATH%/}/pve-thin-client-usb-payload-latest.tar.gz">USB payload bundle</a></li>
     <li>VM-specific installer URLs now embed a full preset (host, vmid, node, credentials, stream defaults) so the thin client install can run without manual VM data entry.</li>
     <li>The generic installer remains available as fallback when no VM-specific preset should be embedded.</li>
     <li><a href="${DOWNLOADS_PATH%/}/pve-dcv-downloads-status.json">Status JSON</a></li>
     <li><a href="${DOWNLOADS_PATH%/}/SHA256SUMS">SHA256SUMS</a></li>
   </ul>
-  <p>The hosted USB installers are preconfigured to download their large payload from this same Proxmox host instead of GitHub. VM-specific installers ship with embedded presets so thin clients can be installed without manual profile input.</p>
+  <p>The hosted USB installers download only a bootstrap bundle during USB creation. During target installation, the thin client fetches the latest payload directly from this Proxmox host. VM-specific installers ship with embedded presets so thin clients can be installed without manual profile input.</p>
   <table>
     <tr><th>Release version</th><td><code>${VERSION}</code></td></tr>
     <tr><th>Server</th><td><code>${SERVER_NAME}:${LISTEN_PORT}</code></td></tr>
@@ -355,13 +378,14 @@ cat > "$DIST_DIR/pve-dcv-downloads-index.html" <<EOF
     <tr><th>Status JSON</th><td><a href="${DOWNLOADS_PATH%/}/pve-dcv-downloads-status.json">${STATUS_URL}</a></td></tr>
     <tr><th>SHA256SUMS</th><td><a href="${DOWNLOADS_PATH%/}/SHA256SUMS">${SHA256SUMS_URL}</a></td></tr>
     <tr><th>Hosted installer SHA256</th><td><code>${INSTALLER_SHA256}</code></td></tr>
+    <tr><th>Bootstrap SHA256</th><td><code>${BOOTSTRAP_SHA256}</code></td></tr>
     <tr><th>Payload SHA256</th><td><code>${PAYLOAD_SHA256}</code></td></tr>
   </table>
 </body>
 </html>
 EOF
 
-python3 - "$STATUS_JSON_PATH" "$VERSION" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$INSTALLER_URL" "$PAYLOAD_URL" "$STATUS_URL" "$SHA256SUMS_URL" "$HOST_INSTALLER_LATEST" "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" "$INSTALLER_SHA256" "$PAYLOAD_SHA256" "$VM_INSTALLER_URL_TEMPLATE" "$VM_INSTALLERS_METADATA_PATH" <<'PY'
+python3 - "$STATUS_JSON_PATH" "$VERSION" "$SERVER_NAME" "$LISTEN_PORT" "$DOWNLOADS_PATH" "$INSTALLER_URL" "$BOOTSTRAP_URL" "$PAYLOAD_URL" "$STATUS_URL" "$SHA256SUMS_URL" "$HOST_INSTALLER_LATEST" "$DIST_DIR/pve-thin-client-usb-bootstrap-latest.tar.gz" "$DIST_DIR/pve-thin-client-usb-payload-latest.tar.gz" "$INSTALLER_SHA256" "$BOOTSTRAP_SHA256" "$PAYLOAD_SHA256" "$VM_INSTALLER_URL_TEMPLATE" "$VM_INSTALLERS_METADATA_PATH" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
@@ -373,15 +397,18 @@ server_name = sys.argv[3]
 listen_port = int(sys.argv[4])
 downloads_path = sys.argv[5]
 installer_url = sys.argv[6]
-payload_url = sys.argv[7]
-status_url = sys.argv[8]
-sha256sums_url = sys.argv[9]
-installer_path = Path(sys.argv[10])
-payload_path = Path(sys.argv[11])
-installer_sha256 = sys.argv[12]
-payload_sha256 = sys.argv[13]
-vm_installer_url_template = sys.argv[14]
-vm_installers_path = Path(sys.argv[15])
+bootstrap_url = sys.argv[7]
+payload_url = sys.argv[8]
+status_url = sys.argv[9]
+sha256sums_url = sys.argv[10]
+installer_path = Path(sys.argv[11])
+bootstrap_path = Path(sys.argv[12])
+payload_path = Path(sys.argv[13])
+installer_sha256 = sys.argv[14]
+bootstrap_sha256 = sys.argv[15]
+payload_sha256 = sys.argv[16]
+vm_installer_url_template = sys.argv[17]
+vm_installers_path = Path(sys.argv[18])
 vm_installers = json.loads(vm_installers_path.read_text()) if vm_installers_path.exists() else []
 
 payload = {
@@ -391,14 +418,18 @@ payload = {
     "listen_port": listen_port,
     "downloads_path": downloads_path,
     "installer_url": installer_url,
+    "bootstrap_url": bootstrap_url,
     "payload_url": payload_url,
     "status_url": status_url,
     "sha256sums_url": sha256sums_url,
     "installer_size": installer_path.stat().st_size,
+    "bootstrap_size": bootstrap_path.stat().st_size,
     "payload_size": payload_path.stat().st_size,
     "installer_sha256": installer_sha256,
+    "bootstrap_sha256": bootstrap_sha256,
     "payload_sha256": payload_sha256,
     "installer_filename": installer_path.name,
+    "bootstrap_filename": bootstrap_path.name,
     "payload_filename": payload_path.name,
     "vm_installer_url_template": vm_installer_url_template,
     "vm_installer_count": len(vm_installers),
