@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION")"
 TAG="v${VERSION}"
-REPO="${GITHUB_REPO:-meinzeug/pve-dcv-integration}"
+REPO="${GITHUB_REPO:-meinzeug/beagle-os}"
 TITLE="${RELEASE_TITLE:-$TAG}"
 NOTES_FILE="${RELEASE_NOTES_FILE:-}"
 

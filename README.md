@@ -1,33 +1,35 @@
-# pve-dcv-integration
+# Beagle OS
 
-External Proxmox VE integration for hosted thin-client delivery, VM-aware USB installers, and low-latency guest access with `MOONLIGHT`, `SPICE`, `noVNC`, and `DCV`.
+Beagle OS is a thin-client focused operating system project with two deployable tracks:
 
-The current recommended path is:
+- an own OS image build with custom kernel (`-beagle`)
+- a Proxmox integration layer for VM-aware thin-client delivery (`MOONLIGHT`, `SPICE`, `noVNC`, `DCV`)
 
-- Proxmox host installs the integration once
-- a target VM is provisioned for Sunshine
-- the Proxmox UI exposes a per-VM USB installer
-- the thin client boots from USB and only asks for:
-  - streaming mode
-  - target disk
+Typical deployment path:
 
-Everything else can be preseeded from VM metadata and host-generated artifacts.
+- install Beagle integration on the Proxmox host
+- provision a Sunshine target VM
+- create/use a Beagle OS client image
+- start low-latency Moonlight streaming to the target VM
 
 ## Quick Links
 
-- Latest release: [GitHub Releases](https://github.com/meinzeug/pve-dcv-integration/releases/latest)
+- Latest release: [GitHub Releases](https://github.com/meinzeug/beagle-os/releases/latest)
 - Host install: [`scripts/install-proxmox-host.sh`](./scripts/install-proxmox-host.sh)
 - Sunshine guest provisioning: [`scripts/configure-sunshine-guest.sh`](./scripts/configure-sunshine-guest.sh)
+- Proxmox VM baseline for Beagle OS: [`scripts/optimize-proxmox-vm-for-beagle.sh`](./scripts/optimize-proxmox-vm-for-beagle.sh)
+- Build Beagle OS image (own kernel): [`scripts/build-beagle-os.sh`](./scripts/build-beagle-os.sh)
+- Build docs: [`docs/beagle-os-build.md`](./docs/beagle-os-build.md)
 - Thin-client docs: [`docs/thin-client-installation.md`](./docs/thin-client-installation.md)
 - Architecture docs: [`docs/architecture.md`](./docs/architecture.md)
 
 ## What It Does
 
-`pve-dcv-integration` adds three deployable layers around Proxmox VE:
+Beagle OS adds three deployable layers around Proxmox VE:
 
 | Layer | Purpose | Result |
 | --- | --- | --- |
-| Proxmox UI integration | Adds one simple VM action directly in Proxmox | `Thin Client` |
+| Proxmox UI integration | Adds one simple VM action directly in Proxmox | `Beagle OS` |
 | Host-side artifact publishing | Builds and serves VM-aware installers | `https://<host>:8443/pve-dcv-downloads/...` |
 | Thin-client runtime | Turns a device into a dedicated session endpoint | `MOONLIGHT`, `SPICE`, `NOVNC`, `DCV` |
 
@@ -56,12 +58,12 @@ That is exactly what `scripts/configure-sunshine-guest.sh` now prepares.
 ```mermaid
 flowchart LR
     Admin["Operator in Proxmox UI"]
-    PVE["Proxmox Host\npve-dcv-integration"]
+    PVE["Proxmox Host\nBeagle OS"]
     VM["Target VM\nSunshine or DCV metadata"]
     USB["VM-specific USB installer"]
-    Client["Thin Client\nbooted from USB or local disk"]
+    Client["Beagle OS Client\nbooted from USB or local disk"]
 
-    Admin -->|"Thin Client button"| PVE
+    Admin -->|"Beagle OS button"| PVE
     PVE -->|"generate preset + artifacts"| USB
     USB -->|"write bootable stick"| Client
     Client -->|"launch selected mode"| VM
@@ -176,7 +178,7 @@ From the latest release:
 tmpdir="$(mktemp -d)"
 cd "$tmpdir"
 curl -fsSLo pve-dcv.tar.gz \
-  https://github.com/meinzeug/pve-dcv-integration/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
+  https://github.com/meinzeug/beagle-os/releases/latest/download/pve-dcv-thin-client-assistant-latest.tar.gz
 tar -xzf pve-dcv.tar.gz
 ./scripts/install-proxmox-host.sh
 ```
@@ -241,6 +243,19 @@ On preseeded media, the local installer only needs:
 
 All per-VM connection data can already be baked in.
 
+### Build Beagle OS Image (Own Kernel)
+
+```bash
+./scripts/build-beagle-os.sh \
+  --kernel-version 6.12.22 \
+  --kernel-localversion -beagle \
+  --hostname beagle-os
+```
+
+Full details:
+
+- [`docs/beagle-os-build.md`](./docs/beagle-os-build.md)
+
 ## VM Metadata Model
 
 The integration consumes VM description metadata to build URLs and presets.
@@ -296,6 +311,8 @@ The same metadata model also still supports:
 | `pve-thin-client-usb-installer-latest.sh` | latest generic USB writer |
 | `pve-thin-client-usb-payload-v<version>.tar.gz` | live installer payload |
 | `pve-thin-client-usb-payload-latest.tar.gz` | latest live installer payload |
+| `dist/beagle-os/*.qcow2` | own Beagle OS VM image (built via `build-beagle-os.sh`) |
+| `dist/beagle-os/*.raw` | own Beagle OS raw disk image |
 | `SHA256SUMS` | release verification |
 
 ## Operations
@@ -304,6 +321,12 @@ The same metadata model also still supports:
 
 ```bash
 ./scripts/validate-project.sh
+```
+
+### Publish GitHub Release
+
+```bash
+./scripts/create-github-release.sh
 ```
 
 ### Refresh Hosted Artifacts On The Host
