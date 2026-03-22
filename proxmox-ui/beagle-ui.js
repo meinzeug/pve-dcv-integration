@@ -4,6 +4,7 @@
   var PRODUCT_LABEL = "Beagle OS";
   var STYLE_ID = "beagle-os-modal-style";
   var OVERLAY_ID = "beagle-os-overlay";
+  var FLEET_LAUNCHER_ID = "beagle-os-fleet-launcher";
 
   function defaultUsbInstallerUrl() {
     return "https://{host}:8443/beagle-downloads/pve-thin-client-usb-installer-vm-{vmid}.sh";
@@ -17,7 +18,8 @@
     var runtimeConfig = window.BeagleIntegrationConfig || {};
     return {
       usbInstallerUrl: runtimeConfig.usbInstallerUrl || defaultUsbInstallerUrl(),
-      controlPlaneHealthUrl: runtimeConfig.controlPlaneHealthUrl || defaultControlPlaneHealthUrl()
+      controlPlaneHealthUrl: runtimeConfig.controlPlaneHealthUrl || defaultControlPlaneHealthUrl(),
+      apiToken: runtimeConfig.apiToken || ""
     };
   }
 
@@ -103,9 +105,22 @@
       "#" + OVERLAY_ID + " .beagle-btn { border: 0; border-radius: 999px; padding: 10px 16px; font-weight: 700; cursor: pointer; }",
       "#" + OVERLAY_ID + " .beagle-btn.primary { background: linear-gradient(135deg, #f97316, #0ea5e9); color: #fff; }",
       "#" + OVERLAY_ID + " .beagle-btn.secondary { background: #fff; color: #111827; border: 1px solid #d1d5db; }",
+      "#" + OVERLAY_ID + " .beagle-btn.muted { background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; }",
       "#" + OVERLAY_ID + " .beagle-code { width: 100%; min-height: 180px; resize: vertical; border-radius: 14px; border: 1px solid #d1d5db; padding: 12px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #0f172a; color: #e2e8f0; }",
       "#" + OVERLAY_ID + " .beagle-notes { margin: 0; padding-left: 18px; }",
-      "#" + OVERLAY_ID + " .beagle-muted { color: #6b7280; }"
+      "#" + OVERLAY_ID + " .beagle-muted { color: #6b7280; }",
+      "#" + OVERLAY_ID + " .beagle-table-wrap { overflow: auto; border-radius: 16px; border: 1px solid #e5e7eb; background: rgba(255,255,255,0.92); }",
+      "#" + OVERLAY_ID + " .beagle-table { width: 100%; border-collapse: collapse; min-width: 880px; }",
+      "#" + OVERLAY_ID + " .beagle-table th, #" + OVERLAY_ID + " .beagle-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #e5e7eb; vertical-align: top; }",
+      "#" + OVERLAY_ID + " .beagle-table th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #9a3412; background: #fff7ed; position: sticky; top: 0; }",
+      "#" + OVERLAY_ID + " .beagle-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; }",
+      "#" + OVERLAY_ID + " .beagle-badge.healthy { background: #ecfdf5; color: #047857; }",
+      "#" + OVERLAY_ID + " .beagle-badge.degraded { background: #fffbeb; color: #b45309; }",
+      "#" + OVERLAY_ID + " .beagle-badge.drifted { background: #fef2f2; color: #b91c1c; }",
+      "#" + OVERLAY_ID + " .beagle-badge.pending, #" + OVERLAY_ID + " .beagle-badge.unmanaged { background: #eff6ff; color: #1d4ed8; }",
+      "#" + OVERLAY_ID + " .beagle-inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }",
+      "#" + OVERLAY_ID + " .beagle-mini-btn { border: 1px solid #d1d5db; background: #fff; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }",
+      "#" + FLEET_LAUNCHER_ID + " { position: fixed; right: 22px; bottom: 22px; z-index: 99999; border: 0; border-radius: 999px; padding: 12px 18px; font: 700 14px/1 'Trebuchet MS', 'Segoe UI', sans-serif; color: #fff; background: linear-gradient(135deg, #f97316, #0ea5e9); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28); cursor: pointer; }"
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -195,6 +210,70 @@
       return response.json();
     }).then(function(payload) {
       return payload && payload.data ? payload.data : payload;
+    });
+  }
+
+  function getApiToken() {
+    return String(getConfig().apiToken || "").trim();
+  }
+
+  function buildBeagleRequestHeaders(extraHeaders) {
+    var headers = Object.assign({}, extraHeaders || {});
+    var token = getApiToken();
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
+    return headers;
+  }
+
+  function apiBeagleJson(path, options) {
+    return fetch(path, Object.assign({ credentials: "same-origin" }, options || {})).then(function(response) {
+      if (!response.ok) {
+        throw new Error("Beagle API request failed: " + response.status + " " + response.statusText);
+      }
+      return response.json();
+    });
+  }
+
+  function apiGetBeagleJson(path) {
+    return apiBeagleJson(path, { headers: buildBeagleRequestHeaders() });
+  }
+
+  function apiPostBeagleJson(path, payload) {
+    return apiBeagleJson(path, {
+      method: "POST",
+      headers: buildBeagleRequestHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(payload || {})
+    });
+  }
+
+  function apiDeleteBeagle(path) {
+    return apiBeagleJson(path, {
+      method: "DELETE",
+      headers: buildBeagleRequestHeaders()
+    });
+  }
+
+  function downloadProtectedFile(path, filename) {
+    return fetch(path, {
+      credentials: "same-origin",
+      headers: buildBeagleRequestHeaders()
+    }).then(function(response) {
+      if (!response.ok) {
+        throw new Error("Download failed: " + response.status + " " + response.statusText);
+      }
+      return response.blob();
+    }).then(function(blob) {
+      var objectUrl = URL.createObjectURL(blob);
+      var anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename || "beagle-artifact.bin";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(function() {
+        URL.revokeObjectURL(objectUrl);
+      }, 1000);
     });
   }
 
@@ -298,6 +377,207 @@
       return "error";
     }
     return "pending";
+  }
+
+  function renderStatusBadge(status) {
+    var value = String(status || "unknown").toLowerCase();
+    return '<span class="beagle-badge ' + escapeHtml(value) + '">' + escapeHtml(value) + '</span>';
+  }
+
+  function createPolicyFromInventoryItem(item) {
+    var target = item && item.assigned_target ? item.assigned_target : null;
+    if (!target || !target.vmid) {
+      throw new Error("Kein zugewiesenes Ziel fuer diese VM vorhanden.");
+    }
+    return {
+      name: "vm-" + String(item.vmid) + "-managed",
+      enabled: true,
+      priority: 700,
+      selector: {
+        vmid: Number(item.vmid),
+        node: item.node || "",
+        role: "endpoint"
+      },
+      profile: {
+        beagle_role: "endpoint",
+        expected_profile_name: item.expected_profile_name || ("vm-" + String(target.vmid)),
+        network_mode: item.network_mode || "dhcp",
+        moonlight_app: item.moonlight_app || "Desktop",
+        assigned_target: {
+          vmid: Number(target.vmid),
+          node: target.node || ""
+        }
+      }
+    };
+  }
+
+  function renderFleetModal(payload) {
+    var overlay = document.createElement("div");
+    var vms = payload && Array.isArray(payload.vms) ? payload.vms : [];
+    var policies = payload && Array.isArray(payload.policies) ? payload.policies : [];
+    var health = payload && payload.health ? payload.health : {};
+    var endpointCounts = health.endpoint_status_counts || {};
+    var vmRows = vms.map(function(item) {
+      var lastAction = item.last_action || {};
+      var bundleDownloadPath = lastAction.stored_artifact_download_path || "";
+      var policyName = item.applied_policy && item.applied_policy.name || "";
+      return '' +
+        '<tr>' +
+        '  <td><strong>' + escapeHtml(item.name || ("vm-" + item.vmid)) + '</strong><br><span class="beagle-muted">#' + escapeHtml(String(item.vmid || "")) + ' / ' + escapeHtml(item.node || "") + '</span></td>' +
+        '  <td>' + renderStatusBadge(item.compliance && item.compliance.status || "unknown") + '<br><span class="beagle-muted">' + escapeHtml(item.assignment_source || "unassigned") + '</span></td>' +
+        '  <td>' + escapeHtml(item.assigned_target ? (item.assigned_target.name + " (#" + item.assigned_target.vmid + ")") : "") + '<br><span class="beagle-muted">' + escapeHtml(item.stream_host || "") + '</span></td>' +
+        '  <td>' + escapeHtml(policyName || "keine") + '<br><span class="beagle-muted">Bundles: ' + escapeHtml(String(item.support_bundle_count || 0)) + '</span></td>' +
+        '  <td>' + escapeHtml(item.endpoint && item.endpoint.reported_at || "") + '<br><span class="beagle-muted">' + escapeHtml(lastAction.action || "") + " " + escapeHtml(formatActionState(lastAction.ok)) + '</span></td>' +
+        '  <td><div class="beagle-inline-actions">' +
+        '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="profile" data-vmid="' + escapeHtml(String(item.vmid || "")) + '" data-node="' + escapeHtml(item.node || "") + '">Profil</button>' +
+        '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="healthcheck" data-vmid="' + escapeHtml(String(item.vmid || "")) + '">Check</button>' +
+        '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="support-bundle" data-vmid="' + escapeHtml(String(item.vmid || "")) + '">Bundle</button>' +
+        (bundleDownloadPath ? '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="download-bundle" data-bundle-path="' + escapeHtml(bundleDownloadPath) + '" data-bundle-name="vm-' + escapeHtml(String(item.vmid || "")) + '-support.tar.gz">Download</button>' : '') +
+        (policyName ? '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="delete-policy" data-policy-name="' + escapeHtml(policyName) + '">Policy loeschen</button>' : (item.assigned_target ? '    <button type="button" class="beagle-mini-btn" data-beagle-fleet-action="create-policy" data-vmid="' + escapeHtml(String(item.vmid || "")) + '">Zu Policy</button>' : '')) +
+        '  </div></td>' +
+        '</tr>';
+    }).join("");
+    var policyRows = policies.map(function(policy) {
+      var selector = policy.selector || {};
+      var profile = policy.profile || {};
+      return '' +
+        '<tr>' +
+        '  <td><strong>' + escapeHtml(policy.name || "") + '</strong></td>' +
+        '  <td>' + escapeHtml(String(policy.priority || 0)) + '</td>' +
+        '  <td>' + escapeHtml(selector.vmid ? ("VM " + selector.vmid) : "") + ' ' + escapeHtml(selector.node || "") + ' ' + escapeHtml(selector.role || "") + '</td>' +
+        '  <td>' + escapeHtml(profile.expected_profile_name || "") + '<br><span class="beagle-muted">' + escapeHtml(profile.network_mode || "") + '</span></td>' +
+        '  <td><button type="button" class="beagle-mini-btn" data-beagle-fleet-action="delete-policy" data-policy-name="' + escapeHtml(policy.name || "") + '">Loeschen</button></td>' +
+        '</tr>';
+    }).join("");
+
+    overlay.id = OVERLAY_ID;
+    overlay.innerHTML = '' +
+      '<div class="beagle-modal" role="dialog" aria-modal="true" aria-label="Beagle Fleet">' +
+      '  <div class="beagle-header">' +
+      '    <div><h2 class="beagle-title">Beagle Fleet</h2><p class="beagle-subtitle">Zentrale Endpunkt-, Policy- und Diagnose-Sicht fuer Proxmox.</p></div>' +
+      '    <button type="button" class="beagle-close" aria-label="Schliessen">×</button>' +
+      '  </div>' +
+      '  <div class="beagle-body">' +
+      '    <div class="beagle-actions">' +
+      '      <button type="button" class="beagle-btn primary" data-beagle-fleet-action="refresh">Aktualisieren</button>' +
+      '      <button type="button" class="beagle-btn secondary" data-beagle-fleet-action="open-health">Health</button>' +
+      '      <button type="button" class="beagle-btn secondary" data-beagle-fleet-action="copy-policies">Policies JSON</button>' +
+      '    </div>' +
+      '    <div class="beagle-grid">' +
+      '      <section class="beagle-card"><h3>Fleet</h3><div class="beagle-kv">' +
+                kvRow('Endpoints', escapeHtml(String(health.endpoint_count || 0))) +
+                kvRow('Policies', escapeHtml(String(health.policy_count || 0))) +
+                kvRow('Healthy', escapeHtml(String(endpointCounts.healthy || 0))) +
+                kvRow('Pending', escapeHtml(String(endpointCounts.pending || 0))) +
+      '      </div></section>' +
+      '      <section class="beagle-card"><h3>Compliance</h3><div class="beagle-kv">' +
+                kvRow('Degraded', escapeHtml(String(endpointCounts.degraded || 0))) +
+                kvRow('Drifted', escapeHtml(String(endpointCounts.drifted || 0))) +
+                kvRow('Unmanaged', escapeHtml(String(endpointCounts.unmanaged || 0))) +
+                kvRow('Generated', escapeHtml(health.generated_at || '')) +
+      '      </div></section>' +
+      '    </div>' +
+      '    <section class="beagle-card"><h3>Endpoints</h3><div class="beagle-table-wrap"><table class="beagle-table"><thead><tr><th>VM</th><th>Status</th><th>Ziel</th><th>Policy</th><th>Letzter Kontakt</th><th>Aktionen</th></tr></thead><tbody>' + vmRows + '</tbody></table></div></section>' +
+      '    <section class="beagle-card"><h3>Policies</h3><div class="beagle-table-wrap"><table class="beagle-table"><thead><tr><th>Name</th><th>Prioritaet</th><th>Selektor</th><th>Profil</th><th>Aktion</th></tr></thead><tbody>' + policyRows + '</tbody></table></div></section>' +
+      '  </div>' +
+      '</div>';
+
+    overlay.addEventListener('click', function(event) {
+      var target;
+      var item;
+      if (event.target === overlay || event.target.closest('.beagle-close')) {
+        removeOverlay();
+        return;
+      }
+      target = event.target instanceof HTMLElement ? event.target.closest('[data-beagle-fleet-action]') : null;
+      if (!target) {
+        return;
+      }
+      switch (target.getAttribute('data-beagle-fleet-action')) {
+        case 'refresh':
+          showFleetModal();
+          break;
+        case 'open-health':
+          openUrl(resolveControlPlaneHealthUrl());
+          break;
+        case 'copy-policies':
+          copyText(JSON.stringify(policies, null, 2), 'Beagle Policies kopiert.');
+          break;
+        case 'profile':
+          showProfileModal({ vmid: Number(target.getAttribute('data-vmid')), node: target.getAttribute('data-node') });
+          break;
+        case 'healthcheck':
+        case 'support-bundle':
+          apiPostBeagleJson('/beagle-api/api/v1/vms/' + encodeURIComponent(target.getAttribute('data-vmid')) + '/actions', {
+            action: target.getAttribute('data-beagle-fleet-action')
+          }).then(function() {
+            showToast('Beagle Aktion wurde in die Queue gestellt.');
+            showFleetModal();
+          }).catch(function(error) {
+            showError(error.message);
+          });
+          break;
+        case 'download-bundle':
+          downloadProtectedFile('/beagle-api' + target.getAttribute('data-bundle-path'), target.getAttribute('data-bundle-name')).catch(function(error) {
+            showError(error.message);
+          });
+          break;
+        case 'create-policy':
+          item = vms.find(function(candidate) { return Number(candidate.vmid) === Number(target.getAttribute('data-vmid')); });
+          apiPostBeagleJson('/beagle-api/api/v1/policies', createPolicyFromInventoryItem(item)).then(function() {
+            showToast('Beagle Policy wurde erzeugt.');
+            showFleetModal();
+          }).catch(function(error) {
+            showError(error.message);
+          });
+          break;
+        case 'delete-policy':
+          apiDeleteBeagle('/beagle-api/api/v1/policies/' + encodeURIComponent(target.getAttribute('data-policy-name'))).then(function() {
+            showToast('Beagle Policy wurde geloescht.');
+            showFleetModal();
+          }).catch(function(error) {
+            showError(error.message);
+          });
+          break;
+        default:
+          break;
+      }
+    });
+
+    document.body.appendChild(overlay);
+  }
+
+  function showFleetModal() {
+    ensureStyles();
+    removeOverlay();
+    if (!getApiToken()) {
+      showError('Beagle API Token fehlt in der Proxmox-UI-Konfiguration.');
+      return;
+    }
+    var overlay = document.createElement('div');
+    overlay.id = OVERLAY_ID;
+    overlay.innerHTML = '<div class="beagle-modal"><div class="beagle-header"><div><h2 class="beagle-title">Beagle Fleet wird geladen</h2><p class="beagle-subtitle">Inventar, Policies und Endpoint-Zustand werden vom Manager geladen.</p></div><button type="button" class="beagle-close" aria-label="Schliessen">×</button></div><div class="beagle-body"><div class="beagle-banner info">Beagle Control Plane wird abgefragt.</div></div></div>';
+    overlay.addEventListener('click', function(event) {
+      if (event.target === overlay || event.target.closest('.beagle-close')) {
+        removeOverlay();
+      }
+    });
+    document.body.appendChild(overlay);
+    Promise.all([
+      apiGetJson('/beagle-api/api/v1/health'),
+      apiGetBeagleJson('/beagle-api/api/v1/vms'),
+      apiGetBeagleJson('/beagle-api/api/v1/policies')
+    ]).then(function(results) {
+      removeOverlay();
+      renderFleetModal({
+        health: results[0] || {},
+        vms: results[1] && results[1].vms || [],
+        policies: results[2] && results[2].policies || []
+      });
+    }).catch(function(error) {
+      removeOverlay();
+      showError('Beagle Fleet konnte nicht geladen werden: ' + error.message);
+    });
   }
 
   function resolveVmProfile(ctx) {
@@ -593,12 +873,27 @@
     button.__beagleIntegrated = true;
   }
 
+  function ensureFleetLauncher() {
+    if (document.getElementById(FLEET_LAUNCHER_ID)) {
+      return;
+    }
+    var button = document.createElement('button');
+    button.id = FLEET_LAUNCHER_ID;
+    button.type = 'button';
+    button.textContent = 'Beagle Fleet';
+    button.addEventListener('click', function() {
+      showFleetModal();
+    });
+    document.body.appendChild(button);
+  }
+
   function integrate() {
     if (!(window.Ext && Ext.ComponentQuery)) {
       return;
     }
 
     Ext.ComponentQuery.query("pveConsoleButton").forEach(ensureConsoleButtonIntegration);
+    ensureFleetLauncher();
   }
 
   function boot() {

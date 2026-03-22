@@ -706,13 +706,19 @@ def build_vm_inventory() -> dict[str, Any]:
                 "stream_host": profile["stream_host"],
                 "sunshine_api_url": profile["sunshine_api_url"],
                 "moonlight_app": profile["moonlight_app"],
+                "network_mode": profile["network_mode"],
+                "expected_profile_name": profile["expected_profile_name"],
                 "default_mode": "MOONLIGHT" if profile["stream_host"] else "",
                 "installer_url": installer.get("installer_url") or profile["installer_url"],
                 "available_modes": installer.get("available_modes") or (["MOONLIGHT"] if profile["stream_host"] else []),
                 "assigned_target": profile.get("assigned_target"),
+                "assignment_source": profile.get("assignment_source", ""),
                 "applied_policy": profile.get("applied_policy"),
                 "endpoint": state["endpoint"],
                 "compliance": state["compliance"],
+                "last_action": state["last_action"],
+                "pending_action_count": state["pending_action_count"],
+                "support_bundle_count": len(list_support_bundle_metadata(node=vm.node, vmid=vm.vmid)),
             }
         )
     return {

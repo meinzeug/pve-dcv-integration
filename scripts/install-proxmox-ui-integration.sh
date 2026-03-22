@@ -7,6 +7,7 @@ CONFIG_TARGET="$PVE_DIR/js/beagle-ui-config.js"
 JS_TARGET="$PVE_DIR/js/beagle-ui.js"
 TPL_TARGET="$PVE_DIR/index.html.tpl"
 TPL_BACKUP="$PVE_DIR/index.html.tpl.beagle.bak"
+BEAGLE_MANAGER_ENV_FILE="${PVE_DCV_CONFIG_DIR:-/etc/beagle}/beagle-manager.env"
 PROJECT_VERSION="$(tr -d ' \n\r' < "$ROOT_DIR/VERSION" 2>/dev/null || echo dev)"
 SERVER_NAME="${PVE_DCV_PROXY_SERVER_NAME:-$(hostname -f 2>/dev/null || hostname)}"
 LISTEN_PORT="${PVE_DCV_PROXY_LISTEN_PORT:-8443}"
@@ -15,6 +16,7 @@ DEFAULT_USB_INSTALLER_URL="https://{host}:${LISTEN_PORT}${DOWNLOADS_PATH%/}/pve-
 USB_INSTALLER_URL="${PVE_DCV_USB_INSTALLER_URL:-$DEFAULT_USB_INSTALLER_URL}"
 DEFAULT_CONTROL_PLANE_HEALTH_URL="https://{host}:${LISTEN_PORT}/beagle-api/api/v1/health"
 CONTROL_PLANE_HEALTH_URL="${BEAGLE_CONTROL_PLANE_HEALTH_URL:-$DEFAULT_CONTROL_PLANE_HEALTH_URL}"
+BEAGLE_API_TOKEN="${BEAGLE_MANAGER_API_TOKEN:-}"
 CONFIG_INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/beagle-ui-config.js?ver=[% version %]-beagle-${PROJECT_VERSION}\"></script>"
 INCLUDE_LINE="    <script type=\"text/javascript\" src=\"/pve2/js/beagle-ui.js?ver=[% version %]-beagle-${PROJECT_VERSION}\"></script>"
 
@@ -33,6 +35,12 @@ ensure_root() {
 
 ensure_root "$@"
 
+if [[ -z "$BEAGLE_API_TOKEN" && -f "$BEAGLE_MANAGER_ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$BEAGLE_MANAGER_ENV_FILE"
+  BEAGLE_API_TOKEN="${BEAGLE_MANAGER_API_TOKEN:-}"
+fi
+
 if [[ ! -d "$PVE_DIR/js" || ! -f "$TPL_TARGET" ]]; then
   echo "Proxmox UI files not found under $PVE_DIR" >&2
   exit 1
@@ -42,7 +50,8 @@ install -D -m 0644 "$ROOT_DIR/proxmox-ui/beagle-ui.js" "$JS_TARGET"
 cat > "$CONFIG_TARGET" <<EOF
 window.BeagleIntegrationConfig = Object.assign({}, window.BeagleIntegrationConfig || {}, {
   usbInstallerUrl: ${USB_INSTALLER_URL@Q},
-  controlPlaneHealthUrl: ${CONTROL_PLANE_HEALTH_URL@Q}
+  controlPlaneHealthUrl: ${CONTROL_PLANE_HEALTH_URL@Q},
+  apiToken: ${BEAGLE_API_TOKEN@Q}
 });
 EOF
 
